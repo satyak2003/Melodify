@@ -1,0 +1,132 @@
+-- Melodify SQLDelight Database Schema
+
+CREATE TABLE TrackEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    artistsJson TEXT NOT NULL,  -- JSON array of Artist objects
+    albumJson TEXT,             -- JSON Album object
+    thumbnailUrl TEXT,
+    durationMs INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'YOUTUBE',
+    localPath TEXT,
+    spotifyId TEXT,
+    youtubeVideoId TEXT,
+    isExplicit INTEGER NOT NULL DEFAULT 0,
+    isLiked INTEGER NOT NULL DEFAULT 0,
+    addedAt INTEGER NOT NULL    -- epoch millis
+);
+
+CREATE TABLE PlaylistEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    thumbnailUrl TEXT,
+    trackCount INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'LOCAL',
+    spotifyId TEXT,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+CREATE TABLE PlaylistTrackCrossRef (
+    playlistId TEXT NOT NULL,
+    trackId TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (playlistId, trackId),
+    FOREIGN KEY (playlistId) REFERENCES PlaylistEntity(id) ON DELETE CASCADE,
+    FOREIGN KEY (trackId) REFERENCES TrackEntity(id) ON DELETE CASCADE
+);
+
+CREATE TABLE RecentlyPlayed (
+    trackId TEXT NOT NULL PRIMARY KEY,
+    playedAt INTEGER NOT NULL,
+    FOREIGN KEY (trackId) REFERENCES TrackEntity(id) ON DELETE CASCADE
+);
+
+CREATE TABLE CachedStreamUrl (
+    videoId TEXT NOT NULL PRIMARY KEY,
+    streamUrl TEXT NOT NULL,
+    expiresAt INTEGER NOT NULL   -- epoch millis
+);
+
+-- Queries for TrackEntity
+getAllTracks:
+SELECT * FROM TrackEntity ORDER BY addedAt DESC;
+
+getTrackById:
+SELECT * FROM TrackEntity WHERE id = ?;
+
+getLocalTracks:
+SELECT * FROM TrackEntity WHERE localPath IS NOT NULL ORDER BY title;
+
+getLikedTracks:
+SELECT * FROM TrackEntity WHERE isLiked = 1 ORDER BY addedAt DESC;
+
+getTracksBySource:
+SELECT * FROM TrackEntity WHERE source = ? ORDER BY addedAt DESC;
+
+upsertTrack:
+INSERT OR REPLACE INTO TrackEntity(id, title, artistsJson, albumJson, thumbnailUrl, durationMs, source, localPath, spotifyId, youtubeVideoId, isExplicit, isLiked, addedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+toggleLike:
+UPDATE TrackEntity SET isLiked = CASE WHEN isLiked = 1 THEN 0 ELSE 1 END WHERE id = ?;
+
+deleteTrack:
+DELETE FROM TrackEntity WHERE id = ?;
+
+searchTracks:
+SELECT * FROM TrackEntity WHERE title LIKE '%' || :query || '%' OR artistsJson LIKE '%' || :query || '%' ORDER BY title;
+
+-- Queries for PlaylistEntity
+getAllPlaylists:
+SELECT * FROM PlaylistEntity ORDER BY updatedAt DESC;
+
+getPlaylistById:
+SELECT * FROM PlaylistEntity WHERE id = ?;
+
+upsertPlaylist:
+INSERT OR REPLACE INTO PlaylistEntity(id, title, description, thumbnailUrl, trackCount, source, spotifyId, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deletePlaylist:
+DELETE FROM PlaylistEntity WHERE id = ?;
+
+getSpotifyPlaylists:
+SELECT * FROM PlaylistEntity WHERE source = 'SPOTIFY' ORDER BY updatedAt DESC;
+
+-- Playlist-Track cross ref
+getTracksForPlaylist:
+SELECT t.* FROM TrackEntity t
+INNER JOIN PlaylistTrackCrossRef ptc ON t.id = ptc.trackId
+WHERE ptc.playlistId = ?
+ORDER BY ptc.position;
+
+addTrackToPlaylist:
+INSERT OR IGNORE INTO PlaylistTrackCrossRef(playlistId, trackId, position) VALUES (?, ?, ?);
+
+removeTrackFromPlaylist:
+DELETE FROM PlaylistTrackCrossRef WHERE playlistId = ? AND trackId = ?;
+
+getPlaylistTrackCount:
+SELECT COUNT(*) FROM PlaylistTrackCrossRef WHERE playlistId = ?;
+
+-- Recently played
+insertRecentlyPlayed:
+INSERT OR REPLACE INTO RecentlyPlayed(trackId, playedAt) VALUES (?, ?);
+
+getRecentlyPlayed:
+SELECT t.* FROM TrackEntity t
+INNER JOIN RecentlyPlayed rp ON t.id = rp.trackId
+ORDER BY rp.playedAt DESC
+LIMIT 20;
+
+-- Cached stream URLs
+getCachedStreamUrl:
+SELECT * FROM CachedStreamUrl WHERE videoId = ? AND expiresAt > ?;
+
+upsertStreamUrl:
+INSERT OR REPLACE INTO CachedStreamUrl(videoId, streamUrl, expiresAt) VALUES (?, ?, ?);
+
+clearExpiredStreamUrls:
+DELETE FROM CachedStreamUrl WHERE expiresAt <= ?;

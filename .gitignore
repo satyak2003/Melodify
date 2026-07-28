@@ -1,0 +1,42 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Android
+local.properties
+*.keystore
+*.jks
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Kotlin
+*.class
+*.jar
+
+# Node (if any tooling)
+node_modules/
+
+# Logs
+*.log
+
+# SQLDelight generated
+shared/src/*/kotlin/com/melodify/db/
+
+# Build artifacts
+*.apk
+*.aab
+*.deb
+*.msi
+*.dmg

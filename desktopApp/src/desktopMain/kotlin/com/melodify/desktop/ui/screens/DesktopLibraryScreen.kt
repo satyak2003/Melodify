@@ -1,0 +1,912 @@
+package com.melodify.desktop.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalUriHandler
+import coil3.compose.AsyncImage
+import com.melodify.shared.data.storage.TrackDownloader
+import com.melodify.shared.domain.model.Playlist
+import com.melodify.shared.domain.model.Track
+import com.melodify.shared.domain.model.currentTrack
+import com.melodify.shared.presentation.ImportProgress
+import com.melodify.shared.presentation.LibraryUiState
+import com.melodify.shared.presentation.LibraryViewModel
+import com.melodify.shared.presentation.PlayerViewModel
+import org.koin.compose.viewmodel.koinViewModel
+
+@Composable
+fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
+    val viewModel: LibraryViewModel = koinViewModel()
+    val uiState by viewModel.uiState.collectAsState()
+    val importProgress by viewModel.importProgress.collectAsState()
+    val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsState()
+    val playerState by playerViewModel.playerState.collectAsState()
+    val downloadingTracks by playerViewModel.downloadingTracks.collectAsState()
+    val uriHandler = LocalUriHandler.current
+
+    var showImportLinkDialog by remember { mutableStateOf(false) }
+    var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+    var playlistLinkInput by remember { mutableStateOf("") }
+    var newPlaylistTitleInput by remember { mutableStateOf("") }
+    var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
+
+    // Import Link Dialog
+    if (showImportLinkDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportLinkDialog = false },
+            title = { Text("Import Playlist", color = MaterialTheme.colorScheme.onSurface) },
+            text = {
+                Column {
+                    Text("Paste a Spotify playlist link:", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = playlistLinkInput,
+                        onValueChange = { playlistLinkInput = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("https://open.spotify.com/playlist/...") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (playlistLinkInput.isNotBlank()) {
+                        viewModel.importPlaylistFromLink(playlistLinkInput)
+                        playlistLinkInput = ""
+                        showImportLinkDialog = false
+                    }
+                }) { Text("Import") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportLinkDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Create Playlist Dialog
+    if (showCreatePlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreatePlaylistDialog = false },
+            title = { Text("Create Playlist", color = MaterialTheme.colorScheme.onSurface) },
+            text = {
+                Column {
+                    Text("Enter a name for your new playlist:", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newPlaylistTitleInput,
+                        onValueChange = { newPlaylistTitleInput = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("My Favorites") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (newPlaylistTitleInput.isNotBlank()) {
+                        viewModel.createLocalPlaylist(newPlaylistTitleInput)
+                        newPlaylistTitleInput = ""
+                        showCreatePlaylistDialog = false
+                    }
+                }) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreatePlaylistDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+
+        // ── Left column: Playlist list (320dp) ─────────────────────────────
+        Column(
+            modifier = Modifier
+                .width(320.dp)
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(24.dp)
+        ) {
+            // Header
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Library",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // Create Playlist Button
+                    IconButton(
+                        onClick = { showCreatePlaylistDialog = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Add,
+                            contentDescription = "Create playlist",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    if (isSpotifyConnected) {
+                        // Sync Spotify Button
+                        IconButton(
+                            onClick = { viewModel.importSpotifyPlaylists() },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.Sync,
+                                contentDescription = "Sync Spotify",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Link Import Button
+                        IconButton(
+                            onClick = { showImportLinkDialog = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.Link,
+                                contentDescription = "Import link",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Logout Button
+                        IconButton(
+                            onClick = { viewModel.logoutSpotify() },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.Logout,
+                                contentDescription = "Logout Spotify",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Prominent Import Local Music Files Button
+            Button(
+                onClick = {
+                    try {
+                        val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Select Local Music Files", java.awt.FileDialog.LOAD)
+                        dialog.isMultipleMode = true
+                        dialog.isVisible = true
+                        val files = dialog.files
+                        if (files != null && files.isNotEmpty()) {
+                            val paths = files.map { it.absolutePath }
+                            viewModel.importLocalMusicFiles(paths)
+                        }
+                    } catch (e: Exception) {
+                        println("Local file import error: ${e.message}")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            ) {
+                Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Import Local Music", fontWeight = FontWeight.Bold)
+            }
+
+
+            Spacer(Modifier.height(4.dp))
+
+            // Spotify connect / badge
+            if (!isSpotifyConnected) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = {
+                        val authUrl = viewModel.startSpotifyLogin()
+                        uriHandler.openUri(authUrl)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(Icons.Rounded.Link, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Connect Spotify", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.CheckCircle,
+                        null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "Spotify Connected",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            // Import progress
+            importProgress?.let { progress ->
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            progress.currentPlaylist.ifEmpty { "Importing…" },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (progress.currentTrack.isNotEmpty()) {
+                            Text(
+                                progress.currentTrack,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { progress.percentage },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            "${progress.imported}/${progress.total}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Playlist list
+            when (val state = uiState) {
+                is LibraryUiState.Loading -> {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
+                }
+
+                is LibraryUiState.Error -> {
+                    Column(
+                        Modifier.fillMaxWidth().weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(state.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = { viewModel.loadLibrary() }) { Text("Retry") }
+                    }
+                }
+
+                is LibraryUiState.Success -> {
+                    val allPlaylists = state.spotifyPlaylists + state.localPlaylists
+                    if (allPlaylists.isEmpty() && state.likedTracks.isEmpty()) {
+                        Box(
+                            Modifier.fillMaxWidth().weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Rounded.LibraryMusic,
+                                    null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "No playlists yet",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            // Liked songs
+                            if (state.likedTracks.isNotEmpty()) {
+                                item {
+                                    LibraryPlaylistRow(
+                                        title = "Liked Songs",
+                                        subtitle = "${state.likedTracks.size} songs",
+                                        thumbnailUrl = null,
+                                        isLiked = true,
+                                        isSelected = selectedPlaylist?.id == "liked",
+                                        onClick = {
+                                            val fakePlaylist = Playlist(
+                                                id = "liked",
+                                                title = "Liked Songs",
+                                                tracks = state.likedTracks
+                                            )
+                                            selectedPlaylist = fakePlaylist
+                                        }
+                                    )
+                                }
+                            }
+
+                            if (state.localPlaylists.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        "My Playlists",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 4.dp)
+                                    )
+                                }
+                                items(state.localPlaylists) { playlist ->
+                                    LibraryPlaylistRow(
+                                        title = playlist.title,
+                                        subtitle = "${playlist.trackCount} songs",
+                                        thumbnailUrl = playlist.thumbnailUrl,
+                                        isSelected = selectedPlaylist?.id == playlist.id,
+                                        onClick = { selectedPlaylist = playlist }
+                                    )
+                                }
+                            }
+
+                            if (state.spotifyPlaylists.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        "Spotify",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 4.dp)
+                                    )
+                                }
+                                items(state.spotifyPlaylists) { playlist ->
+                                    LibraryPlaylistRow(
+                                        title = playlist.title,
+                                        subtitle = "${playlist.trackCount} songs",
+                                        thumbnailUrl = playlist.thumbnailUrl,
+                                        isSelected = selectedPlaylist?.id == playlist.id,
+                                        onClick = { selectedPlaylist = playlist }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Right column: Track list ────────────────────────────────────────
+        val playlist = selectedPlaylist
+        val localPlaylists = (uiState as? LibraryUiState.Success)?.localPlaylists ?: emptyList()
+
+        if (playlist == null) {
+            Box(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Rounded.QueueMusic,
+                        null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Select a playlist to view tracks",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            TrackListPanel(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                playlist = playlist,
+                currentTrack = playerState.currentTrack,
+                localPlaylists = localPlaylists,
+                downloadingTracks = downloadingTracks,
+                onPlayAll = { playerViewModel.playTracks(playlist.tracks, 0) },
+                onPlayTrack = { index -> playerViewModel.playTracks(playlist.tracks, index) },
+                onDownloadTrack = playerViewModel::downloadTrack,
+                onAddToQueue = { track -> playerViewModel.addToQueue(track) },
+                onAddToPlaylist = viewModel::addTrackToPlaylist,
+                onRemoveFromPlaylist = { trackId -> viewModel.removeTrackFromPlaylist(playlist.id, trackId) }
+            )
+        }
+    }
+}
+
+// ── Playlist row ────────────────────────────────────────────────────────────
+
+@Composable
+private fun LibraryPlaylistRow(
+    title: String,
+    subtitle: String,
+    thumbnailUrl: String?,
+    isSelected: Boolean,
+    isLiked: Boolean = false,
+    onClick: () -> Unit
+) {
+    val bgColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                  else MaterialTheme.colorScheme.surface
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bgColor, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Thumbnail
+        Box(
+            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isLiked) {
+                Icon(Icons.Rounded.Favorite, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+            } else if (thumbnailUrl != null) {
+                AsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+            }
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+// ── Track list panel ────────────────────────────────────────────────────────
+
+@Composable
+private fun TrackListPanel(
+    modifier: Modifier = Modifier,
+    playlist: Playlist,
+    currentTrack: Track?,
+    localPlaylists: List<Playlist>,
+    downloadingTracks: Set<String>,
+    onPlayAll: () -> Unit,
+    onPlayTrack: (Int) -> Unit,
+    onDownloadTrack: (Track) -> Unit,
+    onAddToQueue: (Track) -> Unit,
+    onAddToPlaylist: (String, Track) -> Unit,
+    onRemoveFromPlaylist: (String) -> Unit
+) {
+    val listState = rememberLazyListState()
+
+    Column(modifier = modifier.padding(start = 0.dp)) {
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp, vertical = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Playlist cover
+            Box(
+                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                if (playlist.thumbnailUrl != null) {
+                    AsyncImage(
+                        model = playlist.thumbnailUrl,
+                        contentDescription = playlist.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        Icons.Rounded.MusicNote, null,
+                        modifier = Modifier.size(36.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(20.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    playlist.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!playlist.description.isNullOrBlank()) {
+                    Text(
+                        playlist.description.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                Text(
+                    "${playlist.tracks.size} songs",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            // Play all button
+            FilledIconButton(
+                onClick = onPlayAll,
+                modifier = Modifier.size(56.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = "Play All", modifier = Modifier.size(32.dp))
+            }
+        }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 32.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        )
+
+        if (playlist.tracks.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Rounded.MusicOff, null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "No tracks in this playlist",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            // Column headers
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("#", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(32.dp))
+                Text("Title", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f))
+                Text("Artist", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(0.6f))
+                Text("Duration", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(56.dp))
+                Text("Actions", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(72.dp))
+            }
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                itemsIndexed(playlist.tracks, key = { idx, item -> "${item.id}_$idx" }) { index, track ->
+
+                    val isCurrentlyPlaying = currentTrack != null && (
+                        currentTrack?.id == track.id ||
+                        (currentTrack?.youtubeVideoId != null && currentTrack?.youtubeVideoId == track.youtubeVideoId)
+                    )
+
+                    TrackRow(
+                        index = index + 1,
+                        track = track,
+                        isPlaying = isCurrentlyPlaying,
+                        isDownloading = downloadingTracks.contains(track.id),
+                        isCustomPlaylist = playlist.id.startsWith("local_"),
+                        localPlaylists = localPlaylists,
+                        onClick = { onPlayTrack(index) },
+                        onDownload = { onDownloadTrack(track) },
+                        onAddToQueue = { onAddToQueue(track) },
+                        onAddToPlaylist = { playlistId -> onAddToPlaylist(playlistId, track) },
+                        onRemoveFromPlaylist = { onRemoveFromPlaylist(track.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Individual track row ────────────────────────────────────────────────────
+
+@Composable
+private fun TrackRow(
+    index: Int,
+    track: Track,
+    isPlaying: Boolean,
+    isDownloading: Boolean,
+    isCustomPlaylist: Boolean,
+    localPlaylists: List<Playlist>,
+    onClick: () -> Unit,
+    onDownload: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onAddToPlaylist: (String) -> Unit,
+    onRemoveFromPlaylist: () -> Unit
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val isDownloaded = remember(track) { TrackDownloader.isDownloaded(track) }
+    var showMenu by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                if (isPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                else MaterialTheme.colorScheme.surface
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Index / playing indicator
+        Box(modifier = Modifier.width(32.dp), contentAlignment = Alignment.Center) {
+            if (isPlaying) {
+                Icon(
+                    Icons.Rounded.Equalizer,
+                    contentDescription = "Playing",
+                    tint = primaryColor,
+                    modifier = Modifier.size(16.dp)
+                )
+            } else {
+                Text(
+                    "$index",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = onSurfaceVariant
+                )
+            }
+        }
+
+        // Thumbnail
+        Box(
+            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (track.thumbnailUrl != null) {
+                AsyncImage(
+                    model = track.thumbnailUrl,
+                    contentDescription = track.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.MusicNote,
+                    null,
+                    tint = onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.align(Alignment.Center).size(20.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        // Title
+        Text(
+            track.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
+            color = if (isPlaying) primaryColor else onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Artist
+        Text(
+            track.artistNames,
+            style = MaterialTheme.typography.bodySmall,
+            color = onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(0.6f)
+        )
+
+        // Duration
+        Text(
+            formatTrackDuration(track),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.width(56.dp)
+        )
+
+
+        // Actions
+        Row(modifier = Modifier.width(72.dp), horizontalArrangement = Arrangement.End) {
+            if (isDownloading) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else if (isDownloaded) {
+                Icon(
+                    Icons.Rounded.CheckCircle,
+                    contentDescription = "Downloaded",
+                    tint = primaryColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            } else {
+                IconButton(onClick = onDownload, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Rounded.Download,
+                        contentDescription = "Download",
+                        modifier = Modifier.size(16.dp),
+                        tint = onSurfaceVariant
+                    )
+                }
+            }
+
+            Box {
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Rounded.MoreVert,
+                        contentDescription = "Options",
+                        modifier = Modifier.size(16.dp),
+                        tint = onSurfaceVariant
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Add to Queue") },
+                        leadingIcon = { Icon(Icons.Rounded.Queue, null) },
+                        onClick = {
+                            onAddToQueue()
+                            showMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Download Track") },
+                        leadingIcon = { Icon(Icons.Rounded.Download, null) },
+                        onClick = {
+                            onDownload()
+                            showMenu = false
+                        }
+                    )
+
+                    if (isCustomPlaylist) {
+                        DropdownMenuItem(
+                            text = { Text("Remove from Playlist", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                onRemoveFromPlaylist()
+                                showMenu = false
+                            }
+                        )
+                    }
+
+                    if (localPlaylists.isNotEmpty()) {
+                        HorizontalDivider()
+                        Text(
+                            "Add to Playlist:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                        localPlaylists.forEach { pl ->
+                            DropdownMenuItem(
+                                text = { Text(pl.title) },
+                                leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },
+                                onClick = {
+                                    onAddToPlaylist(pl.id)
+                                    showMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+private fun formatTrackDuration(track: Track): String {
+    val ms = if (track.durationMs > 0) track.durationMs else (track.durationSeconds * 1000L)
+    if (ms <= 0L) return "--:--"
+    val totalSec = ms / 1000
+    val m = totalSec / 60
+    val s = totalSec % 60
+    return "%d:%02d".format(m, s)
+}
+
+
