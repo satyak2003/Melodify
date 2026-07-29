@@ -116,6 +116,19 @@ class InnerTubeApi(private val httpClient: HttpClient) {
         }.body()
     }
 
+    suspend fun getYouTubePlaylist(playlistId: String): BrowseResponse {
+        val targetBrowseId = if (playlistId.startsWith("VL")) playlistId else "VL$playlistId"
+        val request = InnerTubeRequest(
+            context = buildContext(isAndroid = false),
+            browseId = targetBrowseId
+        )
+        return httpClient.post("${InnerTubeConstants.BASE_URL}browse") {
+            parameter("key", InnerTubeConstants.API_KEY)
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
     suspend fun getRelatedSongs(videoId: String, playlistId: String?): NextResponse {
         val request = InnerTubeRequest(
             context = buildContext(isAndroid = false),

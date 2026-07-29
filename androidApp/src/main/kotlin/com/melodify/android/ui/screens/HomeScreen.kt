@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -85,12 +86,21 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    IconButton(onClick = { navController.navigate("about") }) {
-                        Icon(
-                            Icons.Rounded.Info,
-                            contentDescription = "About",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row {
+                        IconButton(onClick = { navController.navigate("settings") }) {
+                            Icon(
+                                Icons.Rounded.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { navController.navigate("about") }) {
+                            Icon(
+                                Icons.Rounded.Info,
+                                contentDescription = "About",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 Column(Modifier.padding(20.dp).align(Alignment.BottomStart)) {

@@ -86,17 +86,51 @@ fun SearchScreen(navController: NavController, playerViewModel: PlayerViewModel)
                 )
             }
         }
+        val isCreatorMode by viewModel.isCreatorMode.collectAsStateWithLifecycle()
+        val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
+
         SearchBar(
             query = query,
             onQueryChange = viewModel::updateQuery,
             onSearch = {},
             active = false,
             onActiveChange = {},
-            placeholder = { Text("Search songs, artists, albums...") },
+            placeholder = { Text(if (isCreatorMode) "Search cinematic & creator safe audio..." else "Search songs, artists, albums...") },
             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
             trailingIcon = if (query.isNotEmpty()) { { IconButton(onClick = viewModel::clearSearch) { Icon(Icons.Rounded.Clear, null) } } } else null,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
         ) {}
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            androidx.compose.material3.FilterChip(
+                selected = isCreatorMode,
+                onClick = viewModel::toggleCreatorMode,
+                label = { Text(if (isCreatorMode) "🎬 Creator Mode: ON" else "🎬 Creator Mode") }
+            )
+        }
+
+        if (isCreatorMode) {
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(com.melodify.shared.presentation.CreatorCategory.entries.toTypedArray()) { cat ->
+                    androidx.compose.material3.FilterChip(
+                        selected = selectedCategory == cat,
+                        onClick = { viewModel.setCreatorCategory(cat) },
+                        label = { Text(cat.displayName) }
+                    )
+                }
+            }
+        }
         
         when (val state = searchState) {
             is SearchUiState.Empty -> SearchEmptyState(onQuerySelect = viewModel::updateQuery)

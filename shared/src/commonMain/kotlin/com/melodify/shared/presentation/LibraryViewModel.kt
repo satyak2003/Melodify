@@ -400,10 +400,46 @@ class LibraryViewModel(
     fun importPlaylistFromLink(link: String) {
         viewModelScope.launch {
             try {
+                if (link.contains("youtube.com") || link.contains("youtu.be")) {
+                    val listMatch = Regex("list=([a-zA-Z0-9_-]+)").find(link)
+                    val playlistId = listMatch?.groupValues?.get(1)
+                        ?: throw IllegalArgumentException("Invalid YouTube playlist link (must contain list=...)")
+
+                    _importProgress.value = ImportProgress(0, 1, "YouTube Playlist")
+                    val tracks = musicRepository.getYouTubePlaylistTracks(playlistId).getOrThrow()
+                    if (tracks.isEmpty()) {
+                        throw Exception("No tracks found in YouTube playlist or playlist is private")
+                    }
+
+                    val newPlaylist = Playlist(
+                        id = "yt_$playlistId",
+                        title = "YouTube Playlist ($playlistId)",
+                        description = "Imported from YouTube Music",
+                        thumbnailUrl = tracks.firstOrNull()?.thumbnailUrl,
+                        trackCount = tracks.size,
+                        tracks = tracks
+                    )
+
+                    val currentStorage = LibraryStorage.loadLibrary()
+                    val updatedLocal = currentStorage.localPlaylists + newPlaylist
+                    LibraryStorage.saveLibrary(
+                        localPlaylists = updatedLocal,
+                        spotifyPlaylists = currentStorage.spotifyPlaylists,
+                        likedTracks = currentStorage.likedTracks
+                    )
+                    _importProgress.value = null
+                    _uiState.value = LibraryUiState.Success(
+                        localPlaylists = updatedLocal,
+                        spotifyPlaylists = currentStorage.spotifyPlaylists,
+                        likedTracks = currentStorage.likedTracks
+                    )
+                    return@launch
+                }
+
                 // Extract ID from link, e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=...
                 val idMatch = Regex("playlist/([a-zA-Z0-9]+)").find(link)
-                val playlistId = idMatch?.groupValues?.get(1) 
-                    ?: throw IllegalArgumentException("Invalid Spotify playlist link")
+                val playlistId = idMatch?.groupValues?.get(1)
+                    ?: throw IllegalArgumentException("Invalid Spotify or YouTube playlist link")
 
                 val spotifyPlaylist = spotifyApi.getPlaylist(playlistId)
                 val totalTracks = spotifyPlaylist.tracksInfo?.total ?: 0

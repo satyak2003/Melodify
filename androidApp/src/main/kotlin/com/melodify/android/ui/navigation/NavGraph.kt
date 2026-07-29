@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -53,6 +54,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Search : Screen("search", "Search", Icons.Rounded.Search)
     object Library : Screen("library", "Library", Icons.Rounded.LibraryMusic)
     object NowPlaying : Screen("now_playing", "Now Playing", Icons.Rounded.MusicNote)
+    object Settings : Screen("settings", "Settings", Icons.Rounded.Settings)
     object About : Screen("about", "About", Icons.Rounded.Info)
     object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Playlist", Icons.Rounded.PlaylistPlay) {
         fun createRoute(playlistId: String) = "playlist_detail/$playlistId"
@@ -125,6 +127,9 @@ fun MelodifyApp() {
                 }
                 composable(Screen.About.route) {
                     AboutScreen(onBack = { navController.popBackStack() })
+                }
+                composable(Screen.Settings.route) {
+                    com.melodify.android.ui.screens.SettingsScreen(onBack = { navController.popBackStack() })
                 }
                 composable(
                     route = Screen.PlaylistDetail.route,

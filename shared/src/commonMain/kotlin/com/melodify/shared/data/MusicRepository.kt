@@ -44,6 +44,13 @@ class MusicRepository(
         }
     }
 
+    suspend fun getYouTubePlaylistTracks(playlistId: String): Result<List<Track>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val response = innerTubeApi.getYouTubePlaylist(playlistId)
+            innerTubeParser.parseBrowseResults(response)
+        }
+    }
+
     suspend fun getRelatedTracks(videoId: String, playlistId: String? = null): Result<List<Track>> = runCatching {
         withContext(Dispatchers.IO) {
             val response = innerTubeApi.getRelatedSongs(videoId, playlistId)
