@@ -33,6 +33,11 @@ actual class AudioPlayer {
     private val _playerError = MutableStateFlow<String?>(null)
     actual val playerError: StateFlow<String?> = _playerError.asStateFlow()
 
+    private val _hasMedia = MutableStateFlow(false)
+    actual val hasMedia: StateFlow<Boolean> = _hasMedia.asStateFlow()
+
+    actual var onTrackEnded: (() -> Unit)? = null
+
     // JavaFX Media Engine
     private var fxMediaPlayer: MediaPlayer? = null
     private var fxInitialized = false
@@ -66,6 +71,7 @@ actual class AudioPlayer {
         _playerError.value = null
         stop()
 
+        _hasMedia.value = true
         _isBuffering.value = true
 
         if (fxInitialized) {
@@ -109,6 +115,7 @@ actual class AudioPlayer {
                     _isPlaying.value = false
                     _positionMs.value = _durationMs.value
                     positionJob?.cancel()
+                    onTrackEnded?.invoke()
                 }
 
                 player.setOnError {
@@ -162,6 +169,7 @@ actual class AudioPlayer {
     }
 
     actual fun stop() {
+        _hasMedia.value = false
         positionJob?.cancel()
         fxMediaPlayer?.stop()
         fxMediaPlayer?.dispose()

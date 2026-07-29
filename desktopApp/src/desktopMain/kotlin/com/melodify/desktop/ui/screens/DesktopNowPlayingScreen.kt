@@ -2,8 +2,8 @@ package com.melodify.desktop.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -11,7 +11,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -106,77 +109,81 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                 }
             }
 
-            // Album art
-            Card(
-                modifier = Modifier.size(340.dp),
-                shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 32.dp)
-            ) {
-                AsyncImage(
-                    model = track.thumbnailUrl,
-                    contentDescription = track.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            // Quality badge
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (track.isFlac) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer
+            key(track.id) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Album art
+                    Card(
+                        modifier = Modifier.size(340.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 32.dp)
                     ) {
-                        Text(
-                            "FLAC",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
+                        AsyncImage(
+                            model = track.thumbnailUrl,
+                            contentDescription = track.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
                         )
                     }
-                } else {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer
+
+                    Spacer(Modifier.height(24.dp))
+
+                    // Quality badge
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        if (track.isFlac) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Text(
+                                    "FLAC",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    "HQ · 256kbps",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Track info
+                    Text(
+                        track.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        track.artistNames,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    track.album?.title?.let { album ->
                         Text(
-                            "HQ · 256kbps",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.secondary,
-                            fontWeight = FontWeight.Bold
+                            album,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     }
                 }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // Track info
-            Text(
-                track.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                track.artistNames,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            track.album?.title?.let { album ->
-                Text(
-                    album,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
             }
 
             Spacer(Modifier.height(24.dp))
@@ -300,9 +307,10 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(queue.tracks.size) { index ->
+                    items(queue.tracks.size, key = { idx -> "${queue.tracks[idx].id}_$idx" }) { index ->
                         val queueTrack = queue.tracks[index]
                         val isPlayingItem = index == queue.currentIndex
+                        var dragOffsetY by remember { mutableStateOf(0f) }
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -316,35 +324,30 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                                     .padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Up / Down reorder controls
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    IconButton(
-                                        onClick = { playerViewModel.moveQueueItemUp(index) },
-                                        enabled = index > 0,
-                                        modifier = Modifier.size(20.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.KeyboardArrowUp,
-                                            contentDescription = "Move Up",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = if (index > 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outlineVariant
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { playerViewModel.moveQueueItemDown(index) },
-                                        enabled = index < queue.tracks.lastIndex,
-                                        modifier = Modifier.size(20.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.KeyboardArrowDown,
-                                            contentDescription = "Move Down",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = if (index < queue.tracks.lastIndex) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outlineVariant
-                                        )
-                                    }
-                                }
-
-                                Spacer(Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Rounded.DragHandle,
+                                    contentDescription = "Drag to reorder",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .padding(end = 8.dp)
+                                        .pointerInput(index) {
+                                            detectDragGestures(
+                                                onDrag = { change: PointerInputChange, dragAmount: Offset ->
+                                                    change.consume()
+                                                    dragOffsetY += dragAmount.y
+                                                    if (dragOffsetY > 45f && index < queue.tracks.lastIndex) {
+                                                        playerViewModel.reorderQueue(index, index + 1)
+                                                        dragOffsetY = 0f
+                                                    } else if (dragOffsetY < -45f && index > 0) {
+                                                        playerViewModel.reorderQueue(index, index - 1)
+                                                        dragOffsetY = 0f
+                                                    }
+                                                },
+                                                onDragEnd = { dragOffsetY = 0f },
+                                                onDragCancel = { dragOffsetY = 0f }
+                                            )
+                                        }
+                                )
 
                                 Column(
                                     modifier = Modifier

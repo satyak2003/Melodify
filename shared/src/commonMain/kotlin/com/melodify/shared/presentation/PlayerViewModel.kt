@@ -76,6 +76,11 @@ class PlayerViewModel(
             println("Last played restoration info: ${e.message}")
         }
 
+        // Listen for track completion callback directly from AudioPlayer
+        audioPlayer.onTrackEnded = {
+            playNext()
+        }
+
         // Observe player errors
         viewModelScope.launch {
             audioPlayer.playerError.collect { error ->
@@ -170,7 +175,7 @@ class PlayerViewModel(
         if (audioPlayer.isPlaying.value) {
             audioPlayer.pause()
         } else if (current != null) {
-            if (_playerState.value is PlayerState.Paused) {
+            if (_playerState.value is PlayerState.Paused && audioPlayer.hasMedia.value) {
                 audioPlayer.resume()
             } else {
                 startPlayingTrack(current)
@@ -183,6 +188,24 @@ class PlayerViewModel(
     fun setVolume(volume: Float) = audioPlayer.setVolume(volume)
 
     // ── Queue control ─────────────────────────────────────────────────────
+
+    fun reorderQueue(fromIndex: Int, toIndex: Int) {
+        val q = _queue.value
+        if (fromIndex !in q.tracks.indices || toIndex !in q.tracks.indices || fromIndex == toIndex) return
+        val mutableTracks = q.tracks.toMutableList()
+        val item = mutableTracks.removeAt(fromIndex)
+        mutableTracks.add(toIndex, item)
+
+        val newCurrentIndex = when {
+            q.currentIndex == fromIndex -> toIndex
+            fromIndex < toIndex && q.currentIndex in (fromIndex + 1)..toIndex -> q.currentIndex - 1
+            toIndex < fromIndex && q.currentIndex in toIndex..<fromIndex -> q.currentIndex + 1
+            else -> q.currentIndex
+        }
+        val updatedQueue = q.copy(tracks = mutableTracks, currentIndex = newCurrentIndex)
+        _queue.value = updatedQueue
+        LastPlayedStorage.saveLastPlayed(q.currentTrack, updatedQueue, audioPlayer.positionMs.value, audioPlayer.durationMs.value)
+    }
 
     fun moveQueueItemUp(index: Int) {
         val q = _queue.value
@@ -383,10 +406,17 @@ class PlayerViewModel(
                 }
 
             } catch (e: Exception) {
+                println("Failed to stream track '${track.title}': ${e.message}")
                 _playerState.value = PlayerState.Error(
                     e.message ?: "Failed to play: ${track.title}",
                     track
                 )
+                // If in a multi-song queue, automatically skip unplayable track after 1.5 seconds
+                delay(1500)
+                val q = _queue.value
+                if (q.tracks.isNotEmpty() && q.currentIndex < q.tracks.lastIndex) {
+                    playNext()
+                }
             }
         }
     }

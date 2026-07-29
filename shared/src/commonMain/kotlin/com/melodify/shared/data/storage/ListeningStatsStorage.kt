@@ -23,17 +23,7 @@ object ListeningStatsStorage {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
     private val baseDir: File
-        get() {
-            val userHome = System.getProperty("user.home")
-            val dir = if (userHome != null && userHome != "/" && userHome.isNotBlank()) {
-                val f = File(userHome, ".melodify")
-                if (f.exists() || f.mkdirs()) f else File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            } else {
-                File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            }
-            if (!dir.exists()) dir.mkdirs()
-            return dir
-        }
+        get() = AppStorage.getStorageDir()
 
     private val file: File
         get() = File(baseDir, "listening_stats.json")

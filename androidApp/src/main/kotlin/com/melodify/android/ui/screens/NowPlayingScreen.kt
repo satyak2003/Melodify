@@ -2,58 +2,22 @@ package com.melodify.android.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowDownward
-import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.RepeatOne
-import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -200,17 +164,26 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
 
                 Spacer(Modifier.height(16.dp))
 
-                // Controls
+                // Playback Controls
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = playerViewModel::toggleShuffle) {
-                        Icon(Icons.Rounded.Shuffle, null, tint = if (queue.isShuffleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(
+                            Icons.Rounded.Shuffle,
+                            contentDescription = "Shuffle",
+                            tint = if (queue.isShuffleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    IconButton(onClick = playerViewModel::playPrevious, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.SkipPrevious, null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onBackground)
+                    IconButton(onClick = playerViewModel::playPrevious, modifier = Modifier.size(56.dp)) {
+                        Icon(
+                            Icons.Rounded.SkipPrevious,
+                            contentDescription = "Previous Track",
+                            modifier = Modifier.size(36.dp),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
                     FilledIconButton(
                         onClick = playerViewModel::togglePlayPause,
@@ -219,26 +192,64 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                     ) {
                         Icon(
                             if (playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            null,
+                            contentDescription = if (playerState.isPlaying) "Pause" else "Play",
                             modifier = Modifier.size(38.dp),
                             tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }
-                    IconButton(onClick = playerViewModel::playNext, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Rounded.SkipNext, null, modifier = Modifier.size(32.dp), tint = MaterialTheme.colorScheme.onBackground)
+                    IconButton(onClick = playerViewModel::playNext, modifier = Modifier.size(56.dp)) {
+                        Icon(
+                            Icons.Rounded.SkipNext,
+                            contentDescription = "Next Track",
+                            modifier = Modifier.size(36.dp),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
                     IconButton(onClick = { playerViewModel.cycleRepeatMode() }) {
-
                         Icon(
                             when (queue.repeatMode) {
                                 RepeatMode.OFF -> Icons.Rounded.Repeat
                                 RepeatMode.ONE -> Icons.Rounded.RepeatOne
                                 RepeatMode.ALL -> Icons.Rounded.Repeat
                             },
-                            null,
+                            contentDescription = "Repeat Mode",
                             tint = if (queue.repeatMode != RepeatMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Volume Slider Row
+                var volumeState by remember { mutableStateOf(1f) }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Rounded.VolumeMute,
+                        contentDescription = "Volume Mute",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Slider(
+                        value = volumeState,
+                        onValueChange = {
+                            volumeState = it
+                            playerViewModel.setVolume(it)
+                        },
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    Icon(
+                        Icons.Rounded.VolumeUp,
+                        contentDescription = "Volume Up",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
@@ -254,29 +265,45 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                 )
             }
 
-            itemsIndexed(queue.tracks) { index, qTrack ->
+            itemsIndexed(queue.tracks, key = { idx, item -> "${item.id}_$idx" }) { index, qTrack ->
                 val isCurrent = index == queue.currentIndex
+                var dragOffsetY by remember { mutableStateOf(0f) }
+
                 ListItem(
                     headlineContent = { Text(qTrack.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal, color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground) },
                     supportingContent = { Text(qTrack.artistNames, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     leadingContent = {
-                        AsyncImage(model = qTrack.thumbnailUrl, contentDescription = null, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Rounded.DragHandle,
+                                contentDescription = "Drag to reorder",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .pointerInput(index) {
+                                        detectDragGestures(
+                                            onDrag = { change: PointerInputChange, dragAmount: Offset ->
+                                                change.consume()
+                                                dragOffsetY += dragAmount.y
+                                                if (dragOffsetY > 50f && index < queue.tracks.lastIndex) {
+                                                    playerViewModel.reorderQueue(index, index + 1)
+                                                    dragOffsetY = 0f
+                                                } else if (dragOffsetY < -50f && index > 0) {
+                                                    playerViewModel.reorderQueue(index, index - 1)
+                                                    dragOffsetY = 0f
+                                                }
+                                            },
+                                            onDragEnd = { dragOffsetY = 0f },
+                                            onDragCancel = { dragOffsetY = 0f }
+                                        )
+                                    }
+                            )
+                            AsyncImage(model = qTrack.thumbnailUrl, contentDescription = null, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                        }
                     },
                     trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (index > 0) {
-                                IconButton(onClick = { playerViewModel.moveQueueItemUp(index) }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Rounded.ArrowUpward, contentDescription = "Move Up", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            if (index < queue.tracks.lastIndex) {
-                                IconButton(onClick = { playerViewModel.moveQueueItemDown(index) }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Rounded.ArrowDownward, contentDescription = "Move Down", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            IconButton(onClick = { playerViewModel.removeFromQueue(index) }, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        IconButton(onClick = { playerViewModel.removeFromQueue(index) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
                     modifier = Modifier

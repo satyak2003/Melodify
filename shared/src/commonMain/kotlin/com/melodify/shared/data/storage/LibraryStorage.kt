@@ -17,17 +17,7 @@ data class StoredLibraryData(
 object LibraryStorage {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; explicitNulls = false }
     private val libraryFile: File
-        get() {
-            val userHome = System.getProperty("user.home")
-            val dir = if (userHome != null && userHome != "/" && userHome.isNotBlank()) {
-                val f = File(userHome, ".melodify")
-                if (f.exists() || f.mkdirs()) f else File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            } else {
-                File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            }
-            if (!dir.exists()) dir.mkdirs()
-            return File(dir, "library_data.json")
-        }
+        get() = File(AppStorage.getStorageDir(), "library_data.json")
 
 
     fun saveLibrary(spotifyPlaylists: List<Playlist>, localPlaylists: List<Playlist>, likedTracks: List<Track>) {

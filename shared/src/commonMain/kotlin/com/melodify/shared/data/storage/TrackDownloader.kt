@@ -11,8 +11,7 @@ import java.net.URL
 object TrackDownloader {
     val downloadsDir: File
         get() {
-            val userHome = System.getProperty("user.home") ?: "."
-            val dir = File(userHome, ".melodify/downloads")
+            val dir = File(AppStorage.getStorageDir(), "downloads")
             if (!dir.exists()) dir.mkdirs()
             return dir
         }

@@ -1,6 +1,8 @@
 package com.melodify.android.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -57,6 +59,13 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     }
 }
 
+fun getScreenOrder(route: String?): Int = when (route) {
+    Screen.Home.route -> 0
+    Screen.Search.route -> 1
+    Screen.Library.route -> 2
+    else -> 0
+}
+
 @Composable
 fun MelodifyApp() {
     val navController = rememberNavController()
@@ -88,11 +97,23 @@ fun MelodifyApp() {
                 startDestination = Screen.Home.route,
                 modifier = Modifier.padding(if (isNowPlayingOpen) androidx.compose.foundation.layout.PaddingValues(0.dp) else padding)
             ) {
-                composable(Screen.Home.route) { HomeScreen(navController) }
-                composable(Screen.Search.route) { SearchScreen(navController, playerViewModel) }
-                composable(Screen.Library.route) { 
-                    LibraryScreen(navController, playerViewModel) 
-                }
+                composable(
+                    Screen.Home.route,
+                    enterTransition = { androidx.compose.animation.slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)) + fadeIn() },
+                    exitTransition = { androidx.compose.animation.slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(300)) + fadeOut() }
+                ) { HomeScreen(navController) }
+
+                composable(
+                    Screen.Search.route,
+                    enterTransition = { androidx.compose.animation.slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn() },
+                    exitTransition = { androidx.compose.animation.slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(300)) + fadeOut() }
+                ) { SearchScreen(navController, playerViewModel) }
+
+                composable(
+                    Screen.Library.route,
+                    enterTransition = { androidx.compose.animation.slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn() },
+                    exitTransition = { androidx.compose.animation.slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut() }
+                ) { LibraryScreen(navController, playerViewModel) }
                 composable(
                     route = Screen.NowPlaying.route,
                     enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },

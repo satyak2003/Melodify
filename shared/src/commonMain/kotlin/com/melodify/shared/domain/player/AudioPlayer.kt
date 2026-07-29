@@ -14,6 +14,8 @@ expect class AudioPlayer {
     val durationMs: StateFlow<Long>
     val isBuffering: StateFlow<Boolean>
     val playerError: StateFlow<String?>
+    val hasMedia: StateFlow<Boolean>
+    var onTrackEnded: (() -> Unit)?
 
     fun play(url: String, track: Track)
     fun resume()

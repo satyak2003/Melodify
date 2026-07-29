@@ -7,17 +7,7 @@ import java.io.File
 object SearchHistoryStorage {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val file: File
-        get() {
-            val userHome = System.getProperty("user.home")
-            val dir = if (userHome != null && userHome != "/" && userHome.isNotBlank()) {
-                val f = File(userHome, ".melodify")
-                if (f.exists() || f.mkdirs()) f else File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            } else {
-                File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            }
-            if (!dir.exists()) dir.mkdirs()
-            return File(dir, "search_history.json")
-        }
+        get() = File(AppStorage.getStorageDir(), "search_history.json")
 
 
     fun saveQuery(query: String) {

@@ -40,6 +40,9 @@ import com.melodify.shared.domain.model.positionMs
 import com.melodify.shared.presentation.PlayerViewModel
 
 
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+
 @Composable
 fun MiniPlayer(viewModel: PlayerViewModel, onClick: () -> Unit) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
@@ -47,7 +50,17 @@ fun MiniPlayer(viewModel: PlayerViewModel, onClick: () -> Unit) {
     val progress = if (playerState.durationMs > 0) playerState.positionMs.toFloat() / playerState.durationMs.toFloat() else 0f
     
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { _, dragAmount ->
+                    if (dragAmount < -20f) {
+                        onClick()
+                    }
+                }
+            }
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)

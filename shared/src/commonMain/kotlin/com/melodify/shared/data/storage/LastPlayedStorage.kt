@@ -19,17 +19,7 @@ data class StoredLastPlayed(
 object LastPlayedStorage {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; explicitNulls = false }
     private val file: File
-        get() {
-            val userHome = System.getProperty("user.home")
-            val dir = if (userHome != null && userHome != "/" && userHome.isNotBlank()) {
-                val f = File(userHome, ".melodify")
-                if (f.exists() || f.mkdirs()) f else File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            } else {
-                File(System.getProperty("java.io.tmpdir") ?: ".", ".melodify")
-            }
-            if (!dir.exists()) dir.mkdirs()
-            return File(dir, "last_played.json")
-        }
+        get() = File(AppStorage.getStorageDir(), "last_played.json")
 
 
     fun saveLastPlayed(track: Track?, queue: Queue, positionMs: Long, durationMs: Long) {

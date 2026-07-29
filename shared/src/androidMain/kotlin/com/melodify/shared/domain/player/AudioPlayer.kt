@@ -38,15 +38,20 @@ actual class AudioPlayer(private val context: Context) {
     
     private val _positionMs = MutableStateFlow(0L)
     actual val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
-    
+
     private val _durationMs = MutableStateFlow(0L)
     actual val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
     
     private val _isBuffering = MutableStateFlow(false)
     actual val isBuffering: StateFlow<Boolean> = _isBuffering.asStateFlow()
-    
+
     private val _playerError = MutableStateFlow<String?>(null)
     actual val playerError: StateFlow<String?> = _playerError.asStateFlow()
+
+    private val _hasMedia = MutableStateFlow(false)
+    actual val hasMedia: StateFlow<Boolean> = _hasMedia.asStateFlow()
+
+    actual var onTrackEnded: (() -> Unit)? = null
     
     init {
         player.addListener(object : Player.Listener {
@@ -58,6 +63,9 @@ actual class AudioPlayer(private val context: Context) {
                 _isBuffering.value = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
                     _durationMs.value = player.duration.takeIf { it > 0 } ?: 0L
+                } else if (playbackState == Player.STATE_ENDED) {
+                    _isPlaying.value = false
+                    onTrackEnded?.invoke()
                 }
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -69,6 +77,7 @@ actual class AudioPlayer(private val context: Context) {
     
     actual fun play(url: String, track: Track) {
         _playerError.value = null
+        _hasMedia.value = true
         val metadata = MediaMetadata.Builder()
             .setTitle(track.title)
             .setArtist(track.artistNames)
@@ -97,10 +106,11 @@ actual class AudioPlayer(private val context: Context) {
     actual fun resume() { player.play() }
     actual fun pause() { player.pause() }
     actual fun seekTo(positionMs: Long) { player.seekTo(positionMs) }
-    actual fun stop() { player.stop(); positionJob?.cancel() }
+    actual fun stop() { _hasMedia.value = false; player.stop(); positionJob?.cancel() }
     actual fun setVolume(volume: Float) { player.volume = volume }
     
     actual fun release() {
+        _hasMedia.value = false
         positionJob?.cancel()
         scope.cancel()
         mediaSession?.release()
