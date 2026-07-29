@@ -74,6 +74,19 @@ actual class DiscordRpc {
                                     put("end", endTime)
                                 }
                             }
+                            val session = com.melodify.shared.domain.sync.SyncSessionManager.currentSession.value
+                            if (session != null) {
+                                putJsonObject("party") {
+                                    put("id", "party_${session.sessionCode}")
+                                    putJsonArray("size") {
+                                        add(session.connectedListenersCount)
+                                        add(8)
+                                    }
+                                }
+                                putJsonObject("secrets") {
+                                    put("join", session.sessionCode)
+                                }
+                            }
                         }
                     }
                 }

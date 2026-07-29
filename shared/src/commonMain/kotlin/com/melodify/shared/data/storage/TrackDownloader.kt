@@ -4,9 +4,14 @@ import com.melodify.shared.data.MusicRepository
 import com.melodify.shared.domain.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URL
+import java.util.concurrent.atomic.AtomicInteger
 
 object TrackDownloader {
     val downloadsDir: File
@@ -65,6 +70,28 @@ object TrackDownloader {
 
             track.copy(localPath = targetFile.absolutePath)
         }
+    }
+
+    suspend fun downloadPlaylistParallel(
+        tracks: List<Track>,
+        musicRepository: MusicRepository,
+        maxConcurrency: Int = 4,
+        onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> }
+    ): List<Result<Track>> = withContext(Dispatchers.IO) {
+        val semaphore = Semaphore(maxConcurrency)
+        val completedCount = AtomicInteger(0)
+        val total = tracks.size
+
+        tracks.map { track ->
+            async {
+                semaphore.withPermit {
+                    val result = downloadTrack(track, musicRepository)
+                    val done = completedCount.incrementAndGet()
+                    onProgress(done, total)
+                    result
+                }
+            }
+        }.awaitAll()
     }
 
     fun deleteDownloadedTrack(track: Track): Boolean {
