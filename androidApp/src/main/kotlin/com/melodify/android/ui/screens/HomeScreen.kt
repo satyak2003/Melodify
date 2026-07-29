@@ -57,9 +57,8 @@ import com.melodify.shared.presentation.PlayerViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
-fun HomeScreen(navController: NavController) {
+fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
     val viewModel: HomeViewModel = koinViewModel()
-    val playerViewModel: PlayerViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     
     LazyColumn(

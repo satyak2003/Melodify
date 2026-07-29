@@ -420,28 +420,26 @@ class LibraryViewModel(
                 // Filter out local files and null tracks (they have empty id or null track)
                 val validRawTracks = rawTracks.filter { it.id.isNotBlank() && it.name.isNotBlank() }
 
-                val tracks = validRawTracks
-                    .mapNotNull { spotifyTrack ->
-                        importedTracks++
-                        _importProgress.value = ImportProgress(
-                            imported = importedTracks,
-                            total = totalTracks,
-                            currentPlaylist = spotifyPlaylist.name,
-                            currentTrack = spotifyTrack.name
-                        )
+                // Map Spotify tracks directly without blocking on YouTube searches
+                val tracks = validRawTracks.mapIndexed { index, spotifyTrack ->
+                    importedTracks++
+                    _importProgress.value = ImportProgress(
+                        imported = importedTracks,
+                        total = totalTracks,
+                        currentPlaylist = spotifyPlaylist.name,
+                        currentTrack = spotifyTrack.name
+                    )
 
-                        musicRepository.matchSpotifyTrack(
-                            title = spotifyTrack.name,
-                            artist = spotifyTrack.artists.firstOrNull()?.name ?: "",
-                            durationMs = spotifyTrack.durationMs
-                        ).getOrNull()?.copy(
-                            spotifyId = spotifyTrack.id,
-                            thumbnailUrl = spotifyTrack.album?.images?.firstOrNull()?.url,
-                        )
-                    }
-
-                if (tracks.isEmpty() && rawTracks.isNotEmpty()) {
-                    throw Exception("Failed to match any of the ${rawTracks.size} tracks on YouTube Music! Is YouTube blocked on this network?")
+                    Track(
+                        id = if (spotifyTrack.id.isNotBlank()) spotifyTrack.id else "sp_${spotifyPlaylist.id}_$index",
+                        title = spotifyTrack.name,
+                        artists = spotifyTrack.artists.map { com.melodify.shared.domain.model.Artist(it.id, it.name) },
+                        album = spotifyTrack.album?.let { com.melodify.shared.domain.model.Album(it.id, it.name, it.images.firstOrNull()?.url) },
+                        thumbnailUrl = spotifyTrack.album?.images?.firstOrNull()?.url ?: spotifyPlaylist.images.firstOrNull()?.url,
+                        durationMs = spotifyTrack.durationMs,
+                        source = com.melodify.shared.domain.model.TrackSource.SPOTIFY,
+                        spotifyId = spotifyTrack.id
+                    )
                 }
 
                 val newPlaylist = Playlist(

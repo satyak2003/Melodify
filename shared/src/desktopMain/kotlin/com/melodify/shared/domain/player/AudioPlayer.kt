@@ -1,6 +1,7 @@
 package com.melodify.shared.domain.player
 
 import com.melodify.shared.domain.model.Track
+import javafx.application.Platform
 import javafx.embed.swing.JFXPanel
 import javafx.scene.media.Media
 import javafx.scene.media.MediaPlayer
@@ -75,64 +76,71 @@ actual class AudioPlayer {
         _isBuffering.value = true
 
         if (fxInitialized) {
-            try {
-                val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
-                    StreamProxy.getProxyUrl(url)
-                } else if (url.startsWith("file:/")) {
-                    url
-                } else {
-                    java.io.File(url).toURI().toString()
-                }
+            Platform.runLater {
+                try {
+                    val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
+                        StreamProxy.getProxyUrl(url)
+                    } else if (url.startsWith("file:/")) {
+                        url
+                    } else {
+                        java.io.File(url).toURI().toString()
+                    }
 
+                    val media = Media(mediaUrl)
+                    val player = MediaPlayer(media)
+                    fxMediaPlayer = player
 
-                val media = Media(mediaUrl)
-                val player = MediaPlayer(media)
-                fxMediaPlayer = player
+                    player.setOnReady {
+                        _durationMs.value = media.duration.toMillis().toLong()
+                        _isBuffering.value = false
+                        player.play()
+                    }
 
-                player.setOnReady {
-                    _durationMs.value = media.duration.toMillis().toLong()
-                    _isBuffering.value = false
-                    player.play()
-                }
+                    player.setOnPlaying {
+                        _isPlaying.value = true
+                        _isBuffering.value = false
+                        startFxPositionTracking()
+                    }
 
-                player.setOnPlaying {
-                    _isPlaying.value = true
-                    _isBuffering.value = false
-                    startFxPositionTracking()
-                }
+                    player.setOnPaused {
+                        _isPlaying.value = false
+                        positionJob?.cancel()
+                    }
 
-                player.setOnPaused {
-                    _isPlaying.value = false
-                    positionJob?.cancel()
-                }
+                    player.setOnStopped {
+                        _isPlaying.value = false
+                        positionJob?.cancel()
+                    }
 
-                player.setOnStopped {
-                    _isPlaying.value = false
-                    positionJob?.cancel()
-                }
+                    player.setOnEndOfMedia {
+                        _isPlaying.value = false
+                        _positionMs.value = _durationMs.value
+                        positionJob?.cancel()
+                        onTrackEnded?.invoke()
+                    }
 
-                player.setOnEndOfMedia {
-                    _isPlaying.value = false
-                    _positionMs.value = _durationMs.value
-                    positionJob?.cancel()
-                    onTrackEnded?.invoke()
-                }
-
-                player.setOnError {
-                    val err = player.error?.message ?: "JavaFX playback error"
-                    println("JavaFX Media error: $err")
+                    player.setOnError {
+                        val err = player.error?.message ?: "JavaFX playback error"
+                        println("JavaFX Media error: $err")
+                        if (vlcAvailable) {
+                            playVlc(url)
+                        } else {
+                            _playerError.value = "Playback error: $err"
+                            _isPlaying.value = false
+                            _isBuffering.value = false
+                        }
+                    }
+                } catch (e: Throwable) {
+                    println("Failed to start JavaFX playback: ${e.message}")
                     if (vlcAvailable) {
                         playVlc(url)
                     } else {
-                        _playerError.value = "Playback error: $err"
-                        _isPlaying.value = false
+                        _playerError.value = "Unable to play audio."
                         _isBuffering.value = false
                     }
                 }
-                return
-            } catch (e: Throwable) {
-                println("Failed to start JavaFX playback: ${e.message}")
             }
+            return
         }
 
 
@@ -154,26 +162,50 @@ actual class AudioPlayer {
     }
 
     actual fun resume() {
-        fxMediaPlayer?.play() ?: vlcComponent?.mediaPlayer()?.controls()?.play()
+        val fxPlayer = fxMediaPlayer
+        if (fxPlayer != null) {
+            Platform.runLater { fxPlayer.play() }
+        } else {
+            vlcComponent?.mediaPlayer()?.controls()?.play()
+        }
     }
 
     actual fun pause() {
-        fxMediaPlayer?.pause() ?: vlcComponent?.mediaPlayer()?.controls()?.pause()
+        val fxPlayer = fxMediaPlayer
+        if (fxPlayer != null) {
+            Platform.runLater { fxPlayer.pause() }
+        } else {
+            vlcComponent?.mediaPlayer()?.controls()?.pause()
+        }
     }
 
     actual fun seekTo(positionMs: Long) {
-        fxMediaPlayer?.let {
-            it.seek(Duration.millis(positionMs.toDouble()))
-            _positionMs.value = positionMs
-        } ?: vlcComponent?.mediaPlayer()?.controls()?.setTime(positionMs)
+        val safePosition = positionMs.coerceAtLeast(0L)
+        val fxPlayer = fxMediaPlayer
+        if (fxPlayer != null) {
+            Platform.runLater {
+                fxPlayer.seek(Duration.millis(safePosition.toDouble()))
+            }
+            _positionMs.value = safePosition
+        } else {
+            vlcComponent?.mediaPlayer()?.controls()?.setTime(safePosition)
+            _positionMs.value = safePosition
+        }
     }
 
     actual fun stop() {
         _hasMedia.value = false
         positionJob?.cancel()
-        fxMediaPlayer?.stop()
-        fxMediaPlayer?.dispose()
-        fxMediaPlayer = null
+        val fxPlayer = fxMediaPlayer
+        if (fxPlayer != null) {
+            Platform.runLater {
+                try {
+                    fxPlayer.stop()
+                    fxPlayer.dispose()
+                } catch (ignored: Throwable) {}
+            }
+            fxMediaPlayer = null
+        }
         vlcComponent?.mediaPlayer()?.controls()?.stop()
         _isPlaying.value = false
         _isBuffering.value = false
@@ -181,7 +213,10 @@ actual class AudioPlayer {
 
     actual fun setVolume(volume: Float) {
         val vol = volume.coerceIn(0f, 1f)
-        fxMediaPlayer?.volume = vol.toDouble()
+        val fxPlayer = fxMediaPlayer
+        if (fxPlayer != null) {
+            Platform.runLater { fxPlayer.volume = vol.toDouble() }
+        }
         vlcComponent?.mediaPlayer()?.audio()?.setVolume((vol * 100).toInt())
     }
 

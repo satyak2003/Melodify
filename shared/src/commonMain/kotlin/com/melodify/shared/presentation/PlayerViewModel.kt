@@ -57,6 +57,8 @@ class PlayerViewModel(
 
     private var positionJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var playbackRequestId = 0L
+    private var consecutiveFailures = 0
 
     init {
         // Restore last played track if available
@@ -78,7 +80,13 @@ class PlayerViewModel(
 
         // Listen for track completion callback directly from AudioPlayer
         audioPlayer.onTrackEnded = {
-            playNext()
+            // Platform callbacks may arrive off the UI thread.
+            viewModelScope.launch {
+                val currentState = _playerState.value
+                if (currentState is PlayerState.Playing || currentState is PlayerState.Buffering) {
+                    playNext()
+                }
+            }
         }
 
         // Observe player errors
@@ -158,6 +166,7 @@ class PlayerViewModel(
     // ── Playback control ──────────────────────────────────────────────────
 
     fun playTrack(track: Track) {
+        consecutiveFailures = 0
         val newQueue = Queue(tracks = listOf(track), currentIndex = 0)
         _queue.value = newQueue
         startPlayingTrack(track)
@@ -165,6 +174,7 @@ class PlayerViewModel(
 
     fun playTracks(tracks: List<Track>, startIndex: Int = 0) {
         if (tracks.isEmpty()) return
+        consecutiveFailures = 0
         val idx = startIndex.coerceIn(0, tracks.lastIndex)
         _queue.value = Queue(tracks = tracks, currentIndex = idx)
         startPlayingTrack(tracks[idx])
@@ -178,7 +188,9 @@ class PlayerViewModel(
             if (_playerState.value is PlayerState.Paused && audioPlayer.hasMedia.value) {
                 audioPlayer.resume()
             } else {
-                startPlayingTrack(current)
+                consecutiveFailures = 0
+                val savedPos = (_playerState.value as? PlayerState.Paused)?.positionMs ?: 0L
+                startPlayingTrack(current, initialSeekMs = savedPos)
             }
         }
     }
@@ -345,14 +357,16 @@ class PlayerViewModel(
     // ── Internal ──────────────────────────────────────────────────────────
 
 
-    private fun startPlayingTrack(track: Track) {
+    private fun startPlayingTrack(track: Track, initialSeekMs: Long = 0L) {
         positionJob?.cancel()
+        val requestId = ++playbackRequestId
         viewModelScope.launch {
             try {
+                // Instantly update PlayerState to Buffering with the new target track
                 _playerState.value = PlayerState.Buffering(track)
 
-
                 // Check for local downloaded copy first
+                var activeTrack = track
                 val downloadedPath = TrackDownloader.getDownloadedPath(track)
                 val url = if (downloadedPath != null) {
                     downloadedPath
@@ -366,39 +380,58 @@ class PlayerViewModel(
                     } else {
                         // Retry matching if initial stream lookup failed
                         val matched = musicRepository.matchSpotifyTrack(track.title, track.artistNames, track.durationMs).getOrThrow()
-                        musicRepository.getStreamUrl(matched.youtubeVideoId ?: matched.id).getOrThrow()
+                        activeTrack = track.copy(
+                            youtubeVideoId = matched.youtubeVideoId ?: matched.id,
+                            thumbnailUrl = track.thumbnailUrl ?: matched.thumbnailUrl
+                        )
+                        // Update queue with enriched track
+                        val currentQ = _queue.value
+                        if (currentQ.currentIndex in currentQ.tracks.indices) {
+                            val updatedTracks = currentQ.tracks.toMutableList()
+                            updatedTracks[currentQ.currentIndex] = activeTrack
+                            _queue.value = currentQ.copy(tracks = updatedTracks)
+                        }
+                        musicRepository.getStreamUrl(activeTrack.youtubeVideoId ?: activeTrack.id).getOrThrow()
                     }
                 }
 
+                // A slower previous stream lookup must never replace the newly selected queue item.
+                if (requestId != playbackRequestId) return@launch
+
+                // Successful stream resolution resets consecutive failure count
+                consecutiveFailures = 0
+
+                // Update Buffering state with enriched activeTrack
+                _playerState.value = PlayerState.Buffering(activeTrack)
+
                 // Start playback
-                audioPlayer.play(url, track)
+                audioPlayer.play(url, activeTrack)
+                if (initialSeekMs > 0L) {
+                    audioPlayer.seekTo(initialSeekMs)
+                }
 
                 // Save last played
-                LastPlayedStorage.saveLastPlayed(track, _queue.value, 0L, track.durationMs)
+                LastPlayedStorage.saveLastPlayed(activeTrack, _queue.value, initialSeekMs, activeTrack.durationMs)
 
                 // Update Discord RPC
                 if (discordRpc.isConnected()) {
-                    discordRpc.updatePresence(track, isPlaying = true, positionMs = 0L)
+                    discordRpc.updatePresence(activeTrack, isPlaying = true, positionMs = initialSeekMs)
                 }
 
                 // Track position in a coroutine
                 var tickCount = 0
                 positionJob = launch {
-                    while (isActive) {
+                    while (isActive && requestId == playbackRequestId) {
                         val pos = audioPlayer.positionMs.value
                         val dur = audioPlayer.durationMs.value
                         val q = _queue.value
+                        val currentTrack = q.currentTrack ?: activeTrack
                         if (audioPlayer.isPlaying.value) {
-                            _playerState.value = PlayerState.Playing(track, pos, dur, q)
-                            LastPlayedStorage.saveLastPlayed(track, q, pos, dur)
+                            _playerState.value = PlayerState.Playing(currentTrack, pos, dur, q)
+                            LastPlayedStorage.saveLastPlayed(currentTrack, q, pos, dur)
                             tickCount++
                             if (tickCount % 2 == 0) {
                                 com.melodify.shared.data.storage.ListeningStatsStorage.addListeningTime(1)
-                            }
-                            // Auto-advance when track ends
-                            if (dur > 0 && pos >= dur - 500) {
-                                playNext()
-                                break
                             }
                         }
                         delay(500)
@@ -406,16 +439,24 @@ class PlayerViewModel(
                 }
 
             } catch (e: Exception) {
+                if (requestId != playbackRequestId) return@launch
                 println("Failed to stream track '${track.title}': ${e.message}")
+                consecutiveFailures++
                 _playerState.value = PlayerState.Error(
                     e.message ?: "Failed to play: ${track.title}",
                     track
                 )
-                // If in a multi-song queue, automatically skip unplayable track after 1.5 seconds
-                delay(1500)
-                val q = _queue.value
-                if (q.tracks.isNotEmpty() && q.currentIndex < q.tracks.lastIndex) {
-                    playNext()
+                // Cap automatic skipping to at most 2 consecutive failures to prevent endless cascades
+                if (consecutiveFailures < 3) {
+                    delay(1500)
+                    if (requestId == playbackRequestId) {
+                        val q = _queue.value
+                        if (q.tracks.isNotEmpty() && q.hasNext) {
+                            playNext()
+                        }
+                    }
+                } else {
+                    println("Stopping auto-skip cascade after $consecutiveFailures consecutive stream failures.")
                 }
             }
         }

@@ -43,7 +43,8 @@ data class PlayabilityStatus(
 
 @Serializable
 data class StreamingData(
-    val adaptiveFormats: List<AdaptiveFormat>? = null
+    val adaptiveFormats: List<AdaptiveFormat>? = null,
+    val formats: List<AdaptiveFormat>? = null
 )
 
 @Serializable
@@ -204,7 +205,8 @@ data class MusicShelfRenderer(
 @Serializable
 data class MusicCardShelfRenderer(
     val title: Runs? = null,
-    val subtitle: Runs? = null
+    val subtitle: Runs? = null,
+    val titleEndpoint: NavigationEndpoint? = null
 )
 
 @Serializable

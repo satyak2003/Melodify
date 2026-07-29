@@ -10,46 +10,83 @@ data class Queue(
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val isShuffleEnabled: Boolean = false,
 ) {
-    val currentTrack: Track? get() = if (tracks.isNotEmpty() && currentIndex in tracks.indices) tracks[currentIndex] else null
-    val hasNext: Boolean get() = currentIndex < tracks.size - 1 || repeatMode != RepeatMode.OFF
+    val currentTrack: Track?
+        get() {
+            if (tracks.isEmpty()) return null
+            return if (isShuffleEnabled && shuffledIndices != null) {
+                val realIdx = shuffledIndices.getOrNull(currentIndex) ?: 0
+                tracks.getOrNull(realIdx)
+            } else {
+                tracks.getOrNull(currentIndex)
+            }
+        }
+
+    val maxIndex: Int
+        get() = if (isShuffleEnabled && shuffledIndices != null) shuffledIndices.lastIndex else tracks.lastIndex
+
+    val hasNext: Boolean get() = currentIndex < maxIndex || repeatMode != RepeatMode.OFF
     val hasPrevious: Boolean get() = currentIndex > 0 || repeatMode != RepeatMode.OFF
     val isEmpty: Boolean get() = tracks.isEmpty()
 
     fun withNextTrack(): Queue {
         if (tracks.isEmpty()) return this
+        val max = maxIndex
+        if (max <= 0 && repeatMode != RepeatMode.ALL) return this
         return when (repeatMode) {
             RepeatMode.ONE -> this
-            RepeatMode.ALL -> copy(currentIndex = (currentIndex + 1) % tracks.size)
-            RepeatMode.OFF -> if (currentIndex < tracks.size - 1) copy(currentIndex = currentIndex + 1) else this
+            RepeatMode.ALL -> copy(currentIndex = if (max >= 0) (currentIndex + 1) % (max + 1) else 0)
+            RepeatMode.OFF -> if (currentIndex < max) copy(currentIndex = currentIndex + 1) else this
         }
     }
 
     fun withPreviousTrack(): Queue {
         if (tracks.isEmpty()) return this
+        val max = maxIndex
         return when {
             currentIndex > 0 -> copy(currentIndex = currentIndex - 1)
-            repeatMode == RepeatMode.ALL -> copy(currentIndex = tracks.size - 1)
+            repeatMode == RepeatMode.ALL -> copy(currentIndex = max.coerceAtLeast(0))
             else -> this
         }
     }
 
     fun withShuffleEnabled(enabled: Boolean): Queue {
+        if (tracks.isEmpty()) return copy(isShuffleEnabled = enabled, shuffledIndices = null)
         return if (enabled) {
-            val indices = (tracks.indices).toMutableList().also { it.shuffle() }
-            copy(isShuffleEnabled = true, shuffledIndices = indices)
+            val currentOriginalIdx = if (isShuffleEnabled && shuffledIndices != null) {
+                shuffledIndices.getOrNull(currentIndex) ?: 0
+            } else {
+                currentIndex.coerceIn(0, tracks.lastIndex)
+            }
+            val otherIndices = (tracks.indices).filterNot { it == currentOriginalIdx }.shuffled()
+            val newShuffled = listOf(currentOriginalIdx) + otherIndices
+            copy(isShuffleEnabled = true, shuffledIndices = newShuffled, currentIndex = 0)
         } else {
-            copy(isShuffleEnabled = false, shuffledIndices = null)
+            val currentOriginalIdx = if (shuffledIndices != null) {
+                shuffledIndices.getOrNull(currentIndex) ?: 0
+            } else {
+                currentIndex
+            }
+            copy(isShuffleEnabled = false, shuffledIndices = null, currentIndex = currentOriginalIdx.coerceIn(0, tracks.lastIndex))
         }
     }
 
-    fun addTrack(track: Track): Queue = copy(tracks = tracks + track)
+    fun addTrack(track: Track): Queue {
+        val newTracks = tracks + track
+        val newShuffled = if (isShuffleEnabled && shuffledIndices != null) {
+            shuffledIndices + (newTracks.size - 1)
+        } else null
+        return copy(tracks = newTracks, shuffledIndices = newShuffled)
+    }
+
     fun addTracksNext(newTracks: List<Track>): Queue {
         val before = tracks.subList(0, currentIndex + 1)
         val after = tracks.subList(currentIndex + 1, tracks.size)
-        return copy(tracks = before + newTracks + after)
+        val combined = before + newTracks + after
+        return copy(tracks = combined, shuffledIndices = null, isShuffleEnabled = false)
     }
+
     fun replaceTracks(newTracks: List<Track>, startIndex: Int = 0): Queue =
-        copy(tracks = newTracks, currentIndex = startIndex.coerceIn(0, maxOf(0, newTracks.size - 1)))
+        copy(tracks = newTracks, currentIndex = startIndex.coerceIn(0, maxOf(0, newTracks.size - 1)), shuffledIndices = null, isShuffleEnabled = false)
 }
 
 enum class RepeatMode {

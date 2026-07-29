@@ -33,11 +33,7 @@ class SpotifyApi(private val httpClient: HttpClient) {
     }
 
     suspend fun getPlaylistTracks(playlistId: String, limit: Int = 50, offset: Int = 0): SpotifyPlaylistTracksResponse {
-        return try {
-            get("https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=$limit&offset=$offset")
-        } catch (e: Exception) {
-            get("https://api.spotify.com/v1/playlists/$playlistId/items?limit=$limit&offset=$offset&additional_types=track")
-        }
+        return get("https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=$limit&offset=$offset")
     }
 
 

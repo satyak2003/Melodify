@@ -39,6 +39,17 @@ class HomeViewModel(private val musicRepository: MusicRepository) : ViewModel() 
         loadHome()
     }
 
+    /** Refreshes the resume card without making another network request. */
+    fun refreshLastPlayed() {
+        val state = _uiState.value as? HomeUiState.Success ?: return
+        val lastPlayed = LastPlayedStorage.loadLastPlayed()
+        _uiState.value = state.copy(
+            lastPlayedTrack = lastPlayed?.currentTrack,
+            lastPlayedPositionMs = lastPlayed?.positionMs ?: 0L,
+            lastPlayedDurationMs = lastPlayed?.durationMs ?: 0L
+        )
+    }
+
     private fun loadHome() {
         viewModelScope.launch {
             _uiState.value = HomeUiState.Loading

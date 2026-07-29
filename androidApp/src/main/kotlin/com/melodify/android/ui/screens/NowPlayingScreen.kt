@@ -116,30 +116,34 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
 
                 Spacer(Modifier.height(24.dp))
 
-                // Album art
-                Card(
-                    modifier = Modifier.size(280.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
-                ) {
-                    AsyncImage(model = track.thumbnailUrl, contentDescription = track.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                }
-
-                Spacer(Modifier.height(24.dp))
-
-                // Track info
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onBackground)
-                        Text(track.artistNames, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (track.isFlac) {
-                        Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                            Text("FLAC", Modifier.padding(8.dp, 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                // Album art & Track info keyed by track.id for reliable updates on track change
+                key(track.id) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Card(
+                            modifier = Modifier.size(280.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                        ) {
+                            AsyncImage(model = track.thumbnailUrl, contentDescription = track.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                         }
-                    } else {
-                        Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                            Text("HQ", Modifier.padding(8.dp, 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+
+                        Spacer(Modifier.height(24.dp))
+
+                        // Track info
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onBackground)
+                                Text(track.artistNames, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (track.isFlac) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                                    Text("FLAC", Modifier.padding(8.dp, 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                }
+                            } else {
+                                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Text("HQ", Modifier.padding(8.dp, 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                                }
+                            }
                         }
                     }
                 }

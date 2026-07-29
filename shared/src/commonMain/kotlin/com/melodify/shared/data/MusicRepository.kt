@@ -53,18 +53,23 @@ class MusicRepository(
 
     suspend fun matchSpotifyTrack(title: String, artist: String, durationMs: Long): Result<Track> = runCatching {
         withContext(Dispatchers.IO) {
-            val query = "$title $artist"
+            val query = "$title $artist".trim()
             val searchResult = innerTubeApi.search(query)
             val parsedResult = innerTubeParser.parseSearchResults(searchResult)
-            
             val durationSeconds = (durationMs / 1000).toInt()
-            
-            // Try to find the closest match by duration
-            val bestMatch = parsedResult.tracks.minByOrNull { track ->
-                abs(track.durationSeconds - durationSeconds)
+
+            if (parsedResult.tracks.isNotEmpty()) {
+                val bestMatch = if (durationSeconds > 0) {
+                    parsedResult.tracks.minByOrNull { track -> abs(track.durationSeconds - durationSeconds) }
+                } else null
+                return@withContext bestMatch ?: parsedResult.tracks.first()
             }
-            
-            bestMatch ?: throw Exception("No matching track found for: $query")
+
+            // Fallback search with title only if title + artist returned 0 results
+            val fallbackResult = innerTubeApi.search(title)
+            val fallbackParsed = innerTubeParser.parseSearchResults(fallbackResult)
+            fallbackParsed.tracks.firstOrNull()
+                ?: throw Exception("No matching track found for: $query")
         }
     }
 }

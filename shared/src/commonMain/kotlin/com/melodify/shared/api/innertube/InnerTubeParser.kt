@@ -37,9 +37,26 @@ object InnerTubeParser {
             }
             
             // 3. Top result card (musicCardShelfRenderer)
-            sectionContent.musicCardShelfRenderer?.title?.runs?.firstOrNull()?.let { titleRun ->
-                // For simplicity, we just rely on the other results since musicCardShelfRenderer 
-                // requires a different parsing strategy. But we can extract it if needed.
+            sectionContent.musicCardShelfRenderer?.let { card ->
+                val videoId = card.titleEndpoint?.watchEndpoint?.videoId
+                    ?: card.title?.runs?.firstOrNull()?.navigationEndpoint?.watchEndpoint?.videoId
+                val title = card.title?.runs?.firstOrNull()?.text
+                if (videoId != null && title != null) {
+                    val artist = card.subtitle?.runs?.firstOrNull()?.text ?: "Unknown Artist"
+                    tracks.add(
+                        0, // Add top result card at index 0
+                        Track(
+                            id = videoId,
+                            title = title,
+                            artists = listOf(Artist(id = artist, name = artist, thumbnailUrl = null)),
+                            album = null,
+                            thumbnailUrl = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
+                            durationMs = 200000L,
+                            youtubeVideoId = videoId,
+                            source = TrackSource.YOUTUBE
+                        )
+                    )
+                }
             }
         }
         
@@ -76,8 +93,12 @@ object InnerTubeParser {
     }
 
     fun parseBestStreamUrl(playerResponse: PlayerResponse): String? {
-        val formats = playerResponse.streamingData?.adaptiveFormats ?: return null
-        val best = getHighestQualityStream(formats) ?: return null
+        val adaptive = playerResponse.streamingData?.adaptiveFormats ?: emptyList()
+        val standard = playerResponse.streamingData?.formats ?: emptyList()
+        val allFormats = (adaptive + standard).filter { it.url != null }
+        if (allFormats.isEmpty()) return null
+
+        val best = getHighestQualityStream(allFormats) ?: allFormats.firstOrNull() ?: return null
         val rawUrl = best.url ?: return null
         // Append &file=audio.m4a for mp4/AAC formats so JavaFX Media recognizes the extension
         return if (best.mimeType?.contains("mp4") == true || best.itag in listOf(141, 140, 139)) {
@@ -154,10 +175,10 @@ object InnerTubeParser {
         val preferredItags = listOf(
             InnerTubeConstants.ITAG_AAC_256, // 141 (AAC 256k)
             InnerTubeConstants.ITAG_AAC_128, // 140 (AAC 128k)
+            InnerTubeConstants.ITAG_OPUS_160,// 251 (Opus 160k)
+            InnerTubeConstants.ITAG_OPUS_70, // 250 (Opus 70k)
             139,                             // AAC 48k
-            InnerTubeConstants.ITAG_OPUS_160,// 251 (Opus)
-            InnerTubeConstants.ITAG_OPUS_70, // 250 (Opus)
-            249                              // Opus
+            249                              // Opus low
         )
         
         for (itag in preferredItags) {

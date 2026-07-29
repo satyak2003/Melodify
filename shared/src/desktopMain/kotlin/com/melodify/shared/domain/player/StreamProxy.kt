@@ -77,19 +77,36 @@ object StreamProxy {
                 }
             }
 
-            val connection = URL(targetUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = if (isHead) "HEAD" else "GET"
-            connection.connectTimeout = 15000
-            connection.readTimeout = 30000
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            var currentUrl = targetUrl
+            var connection: HttpURLConnection
+            var responseCode: Int
+            var redirects = 0
 
-            if (rangeHeader != null) {
-                connection.setRequestProperty("Range", rangeHeader)
+            while (true) {
+                connection = URL(currentUrl).openConnection() as HttpURLConnection
+                connection.requestMethod = if (isHead) "HEAD" else "GET"
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
+                connection.instanceFollowRedirects = true
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+                if (rangeHeader != null) {
+                    connection.setRequestProperty("Range", rangeHeader)
+                }
+
+                responseCode = connection.responseCode
+                if (responseCode in listOf(301, 302, 303, 307, 308) && redirects < 5) {
+                    val loc = connection.getHeaderField("Location")
+                    if (!loc.isNullOrBlank()) {
+                        currentUrl = loc
+                        redirects++
+                        continue
+                    }
+                }
+                break
             }
 
-            val responseCode = connection.responseCode
             val contentLength = connection.contentLengthLong
-
             val out = socket.getOutputStream()
 
             val statusLine = when (responseCode) {
@@ -98,8 +115,9 @@ object StreamProxy {
                 else -> "HTTP/1.1 $responseCode OK\r\n"
             }
 
+            val remoteContentType = connection.contentType?.takeIf { it.isNotBlank() } ?: "audio/mp4"
             var headers = statusLine +
-                    "Content-Type: audio/mp4\r\n" +
+                    "Content-Type: $remoteContentType\r\n" +
                     "Accept-Ranges: bytes\r\n"
 
             if (contentLength > 0) {
@@ -115,7 +133,8 @@ object StreamProxy {
             out.flush()
 
             if (!isHead && responseCode in 200..299) {
-                connection.inputStream.use { inStream ->
+                val inputStream = try { connection.inputStream } catch (e: Exception) { null }
+                inputStream?.use { inStream ->
                     val buffer = ByteArray(32768)
                     var bytesRead: Int
                     while (inStream.read(buffer).also { bytesRead = it } != -1) {

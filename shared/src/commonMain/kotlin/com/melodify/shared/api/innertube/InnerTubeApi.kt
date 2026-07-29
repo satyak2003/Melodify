@@ -50,14 +50,33 @@ class InnerTubeApi(private val httpClient: HttpClient) {
 
     suspend fun getPlayerInfo(videoId: String): PlayerResponse {
         val vData = getVisitorData()
-        val request = InnerTubeRequest(
+        // Try WEB_REMIX client first (provides direct URLs for official licensed tracks)
+        try {
+            val webRequest = InnerTubeRequest(
+                context = buildContext(isAndroid = false, visitorData = vData),
+                videoId = videoId
+            )
+            val response = httpClient.post("${InnerTubeConstants.BASE_URL}player") {
+                parameter("key", InnerTubeConstants.API_KEY)
+                contentType(ContentType.Application.Json)
+                setBody(webRequest)
+            }.body<PlayerResponse>()
+
+            val hasDirectUrl = response.streamingData?.adaptiveFormats?.any { it.url != null } == true ||
+                    response.streamingData?.formats?.any { it.url != null } == true
+            if (hasDirectUrl) return response
+        } catch (e: Exception) {
+            // Fallback to Android client
+        }
+
+        val androidRequest = InnerTubeRequest(
             context = buildContext(isAndroid = true, visitorData = vData),
             videoId = videoId
         )
         return httpClient.post("${InnerTubeConstants.BASE_URL}player") {
             parameter("key", InnerTubeConstants.API_KEY)
             contentType(ContentType.Application.Json)
-            setBody(request)
+            setBody(androidRequest)
         }.body()
     }
 

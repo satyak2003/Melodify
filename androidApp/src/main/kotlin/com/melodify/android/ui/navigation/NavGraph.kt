@@ -101,7 +101,7 @@ fun MelodifyApp() {
                     Screen.Home.route,
                     enterTransition = { androidx.compose.animation.slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)) + fadeIn() },
                     exitTransition = { androidx.compose.animation.slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(300)) + fadeOut() }
-                ) { HomeScreen(navController) }
+                ) { HomeScreen(navController, playerViewModel) }
 
                 composable(
                     Screen.Search.route,
