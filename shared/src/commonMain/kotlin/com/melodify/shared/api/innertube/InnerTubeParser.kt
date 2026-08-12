@@ -34,6 +34,10 @@ object InnerTubeParser {
                 itemSectionContent.musicResponsiveListItemRenderer?.let { renderer ->
                     parseTrackFromRenderer(renderer)?.let { track -> tracks.add(track) }
                 }
+                // or a two-row card
+                itemSectionContent.musicTwoRowItemRenderer?.let { renderer ->
+                    parseTrackFromTwoRowRenderer(renderer)?.let { track -> tracks.add(track) }
+                }
             }
             
             // 3. Top result card (musicCardShelfRenderer)
@@ -60,7 +64,7 @@ object InnerTubeParser {
             }
         }
         
-        return SearchResult(tracks = tracks)
+        return SearchResult(tracks = dedupeTracks(tracks))
     }
 
     fun parseBrowseResults(response: BrowseResponse): List<Track> {
@@ -68,6 +72,7 @@ object InnerTubeParser {
         val sectionListContents = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents
         
         sectionListContents?.forEach { sectionContent ->
+            // Standard music shelf (home feed, search results)
             sectionContent.musicShelfRenderer?.contents?.forEach { shelfContent ->
                 shelfContent.musicResponsiveListItemRenderer?.let { renderer ->
                     parseTrackFromRenderer(renderer)?.let { track ->
@@ -75,8 +80,22 @@ object InnerTubeParser {
                     }
                 }
             }
+            // Playlist shelf (YT Music playlists use this renderer)
+            sectionContent.musicPlaylistShelfRenderer?.contents?.forEach { shelfContent ->
+                shelfContent.musicResponsiveListItemRenderer?.let { renderer ->
+                    parseTrackFromRenderer(renderer)?.let { track ->
+                        tracks.add(track)
+                    }
+                }
+            }
+            // Two-row grid renderer
+            sectionContent.musicTwoRowItemRenderer?.let { renderer ->
+                parseTrackFromTwoRowRenderer(renderer)?.let { track ->
+                    tracks.add(track)
+                }
+            }
         }
-        return tracks
+        return dedupeTracks(tracks)
     }
 
     fun parseNextResults(response: NextResponse): List<Track> {
@@ -89,7 +108,7 @@ object InnerTubeParser {
                 }
             }
         }
-        return tracks
+        return dedupeTracks(tracks)
     }
 
     fun parseBestStreamUrl(playerResponse: PlayerResponse): String? {
@@ -145,9 +164,8 @@ object InnerTubeParser {
         // Extract Artist from second flex column
         val artistRuns = renderer.flexColumns?.getOrNull(1)
             ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs
-            
-        val artist = artistRuns?.firstOrNull { it.navigationEndpoint?.browseEndpoint != null }?.text 
-            ?: artistRuns?.firstOrNull()?.text ?: "Unknown Artist"
+
+        val artist = combineArtistRuns(artistRuns)
             
         // Extract Duration from fixed columns (or it could be in second flex column for some layouts)
         val durationStr = renderer.fixedColumns?.firstOrNull()
@@ -168,6 +186,39 @@ object InnerTubeParser {
             youtubeVideoId = videoId,
             source = TrackSource.YOUTUBE
         )
+    }
+
+    fun parseTrackFromTwoRowRenderer(renderer: MusicTwoRowItemRenderer): Track? {
+        val videoId = renderer.navigationEndpoint?.watchEndpoint?.videoId ?: return null
+        val title = renderer.title?.runs?.firstOrNull()?.text ?: return null
+        val artistRuns = renderer.subtitle?.runs
+        val artist = combineArtistRuns(artistRuns)
+        val thumbnailUrl = renderer.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.maxByOrNull { it.width ?: 0 }?.url
+
+        return Track(
+            id = videoId,
+            title = title,
+            artists = listOf(Artist(id = artist, name = artist, thumbnailUrl = thumbnailUrl)),
+            album = null,
+            thumbnailUrl = thumbnailUrl,
+            durationMs = 0L,
+            youtubeVideoId = videoId,
+            source = TrackSource.YOUTUBE
+        )
+    }
+
+    private fun combineArtistRuns(runs: List<Run>?): String {
+        return runs
+            ?.filter { it.navigationEndpoint?.browseEndpoint != null }
+            ?.takeIf { it.isNotEmpty() }
+            ?.joinToString(", ") { it.text ?: "" }
+            ?: runs?.firstOrNull()?.text
+            ?: "Unknown Artist"
+    }
+
+    private fun dedupeTracks(tracks: List<Track>): List<Track> {
+        val seen = LinkedHashSet<String>()
+        return tracks.filter { seen.add(it.id) }
     }
 
     private fun getHighestQualityStream(formats: List<AdaptiveFormat>): AdaptiveFormat? {
@@ -194,7 +245,7 @@ object InnerTubeParser {
 
     
     private fun parseDurationToSeconds(duration: String): Int {
-        val parts = duration.split(":")
+        val parts = duration.trim().split(":")
         return when (parts.size) {
             2 -> {
                 val (minutes, seconds) = parts

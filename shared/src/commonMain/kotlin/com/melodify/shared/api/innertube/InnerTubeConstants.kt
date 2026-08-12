@@ -19,6 +19,14 @@ object InnerTubeConstants {
         "hl" to "en"
     )
 
+    val ANDROID_MUSIC_CLIENT = mapOf(
+        "clientName" to "ANDROID_MUSIC",
+        "clientVersion" to "6.47.52",
+        "androidSdkVersion" to 32,
+        "gl" to "US",
+        "hl" to "en"
+    )
+
     const val ITAG_AAC_256 = 141
     const val ITAG_OPUS_160 = 251
     const val ITAG_AAC_128 = 140

@@ -38,7 +38,10 @@ fun DesktopSearchScreen(playerViewModel: PlayerViewModel) {
 
     val libraryViewModel: LibraryViewModel = koinViewModel()
     val libraryState by libraryViewModel.uiState.collectAsState()
-    val localPlaylists = (libraryState as? LibraryUiState.Success)?.localPlaylists ?: emptyList()
+    val allPlaylists = if (libraryState is LibraryUiState.Success) {
+        val successState = libraryState as LibraryUiState.Success
+        successState.localPlaylists + successState.spotifyPlaylists
+    } else emptyList()
 
     Column(
         modifier = Modifier
@@ -77,7 +80,36 @@ fun DesktopSearchScreen(playerViewModel: PlayerViewModel) {
             )
         )
 
-        Spacer(Modifier.height(16.dp))
+        val isCreatorMode by viewModel.isCreatorMode.collectAsState()
+        val selectedCategory by viewModel.selectedCategory.collectAsState()
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = isCreatorMode,
+                onClick = viewModel::toggleCreatorMode,
+                label = { Text(if (isCreatorMode) "🎬 Creator Mode: ON" else "🎬 Creator Mode") }
+            )
+
+            if (isCreatorMode) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(com.melodify.shared.presentation.CreatorCategory.entries.toTypedArray()) { cat ->
+                        FilterChip(
+                            selected = selectedCategory == cat,
+                            onClick = { viewModel.setCreatorCategory(cat) },
+                            label = { Text(cat.displayName) }
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
 
         // Recent search history chips
         if (searchHistory.isNotEmpty() && query.isBlank()) {
@@ -189,7 +221,7 @@ fun DesktopSearchScreen(playerViewModel: PlayerViewModel) {
                         items(state.results.tracks) { track ->
                             DesktopTrackListItem(
                                 track = track,
-                                localPlaylists = localPlaylists,
+                                allPlaylists = allPlaylists,
                                 onClick = {
                                     playerViewModel.playTracks(
                                         state.results.tracks,

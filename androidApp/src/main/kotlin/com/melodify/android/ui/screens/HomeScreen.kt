@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -39,12 +40,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,57 +60,156 @@ import com.melodify.shared.domain.model.Track
 import com.melodify.shared.presentation.HomeUiState
 import com.melodify.shared.presentation.HomeViewModel
 import com.melodify.shared.presentation.PlayerViewModel
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import org.koin.compose.viewmodel.koinViewModel
+
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.GraphicEq
+import com.melodify.shared.data.storage.AuthManager
+import androidx.compose.ui.text.font.FontFamily
+import com.melodify.shared.ui.modifiers.bounceClick
 
 @Composable
 fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
     val viewModel: HomeViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val userProfileUrl by AuthManager.userProfileUrl.collectAsStateWithLifecycle()
+    val userName by AuthManager.userName.collectAsStateWithLifecycle()
     
+    val greeting = remember {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        when {
+            hour < 12 -> "Good morning"
+            hour < 17 -> "Good afternoon"
+            else -> "Good evening"
+        }
+    }
+    val displayName = userName?.let { it.split(" ").firstOrNull() ?: it } ?: "there"
+    
+    // Gradient background matching concept art
+    val conceptGradient = Brush.verticalGradient(
+        colors = listOf(
+            androidx.compose.ui.graphics.Color(0xFF140D24), // Dark purple/black
+            MaterialTheme.colorScheme.background
+        )
+    )
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(bottom = 100.dp)
+        modifier = Modifier.fillMaxSize().background(conceptGradient),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp)
     ) {
         item {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(160.dp)
-                    .background(Brush.verticalGradient(listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                        MaterialTheme.colorScheme.background
-                    )))
+            // Custom Top Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top bar: app name + about icon
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                // Logo & App Name
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.GraphicEq, // Waveform proxy
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "Melodify",
+                        text = "Melodify",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.onBackground
                     )
-                    Row {
-                        IconButton(onClick = { navController.navigate("settings") }) {
-                            Icon(
-                                Icons.Rounded.Settings,
-                                contentDescription = "Settings",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
+                // Top Right Icons
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .bounceClick(scaleDown = 0.85f) {
+                                navController.navigate(com.melodify.android.ui.navigation.Screen.Settings.route)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .bounceClick(scaleDown = 0.85f) {
+                                navController.navigate(com.melodify.android.ui.navigation.Screen.Profile.route)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (userProfileUrl != null) {
+                            AsyncImage(
+                                model = userProfileUrl,
+                                contentDescription = "Profile",
+                                modifier = Modifier.size(32.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
                             )
-                        }
-                        IconButton(onClick = { navController.navigate("about") }) {
-                            Icon(
-                                Icons.Rounded.Info,
-                                contentDescription = "About",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    (userName?.firstOrNull()?.uppercaseChar() ?: 'M').toString(),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
-                Column(Modifier.padding(20.dp).align(Alignment.BottomStart)) {
-                    Text("Good ${getTimeGreeting()}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                    Text("What do you want to listen to?", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(80.dp)
+            ) {
+                val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsStateWithLifecycle()
+                if (sleepRemainingMs != null) {
+                    val remainingSec = sleepRemainingMs!! / 1000
+                    val text = "Sleep Timer: %d:%02d".format(remainingSec / 60, remainingSec % 60)
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(text, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).align(Alignment.BottomStart)) {
+                    Text("$greeting, $displayName", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    Text("What do you want to listen to today?", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -116,8 +220,13 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
                 item {
                     SurpriseMeHeroButton(
                         onSurprise = {
-                            if (state.trending.isNotEmpty()) {
-                                playerViewModel.playTracks(state.trending.shuffled(), 0)
+                            val tracks = if (state.recommendedTracks.isNotEmpty()) {
+                                state.recommendedTracks.shuffled()
+                            } else {
+                                state.trending.shuffled()
+                            }
+                            if (tracks.isNotEmpty()) {
+                                playerViewModel.playTracks(tracks, 0)
                             }
                         }
                     )
@@ -129,10 +238,7 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
                             track = track,
                             positionMs = state.lastPlayedPositionMs,
                             onClick = {
-                                playerViewModel.playTrack(track)
-                                if (state.lastPlayedPositionMs > 0) {
-                                    playerViewModel.seekTo(state.lastPlayedPositionMs)
-                                }
+                                playerViewModel.playTrack(track, state.lastPlayedPositionMs)
                             }
                         )
                     }
@@ -160,28 +266,97 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
 
 @Composable
 fun SurpriseMeHeroButton(onSurprise: () -> Unit) {
+    val interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        )
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "surprise_pulse")
+    val iconScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "icon_scale"
+    )
+    val iconRotation by infiniteTransition.animateFloat(
+        initialValue = -10f,
+        targetValue = 10f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "icon_rotation"
+    )
+    val shimmerOffset by infiniteTransition.animateFloat(
+        initialValue = -1f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "shimmer"
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clickable(onClick = onSurprise),
+            .height(90.dp)
+            .padding(horizontal = 16.dp)
+            .scale(scale)
+            .clickable(interactionSource = interactionSource, indication = androidx.compose.material3.ripple()) {
+                onSurprise()
+            },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(44.dp)
+        Box {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.White.copy(alpha = 0.08f),
+                                Color.Transparent
+                            ),
+                            start = Offset(shimmerOffset * 1000f, 0f),
+                            end = Offset(shimmerOffset * 1000f + 400f, 400f)
+                        )
+                    )
+            )
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Rounded.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                                rotationZ = iconRotation
+                            }
+                        )
+                    }
                 }
-            }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -198,6 +373,7 @@ fun SurpriseMeHeroButton(onSurprise: () -> Unit) {
             }
             Icon(Icons.Rounded.PlayArrow, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
         }
+        }
     }
 }
 
@@ -212,7 +388,7 @@ fun ContinueListeningCard(track: Track, positionMs: Long, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clickable(onClick = onClick),
+            .bounceClick(scaleDown = 0.97f, onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
@@ -266,7 +442,7 @@ fun MusicTimelineChart(stats: Map<String, Int>) {
                 Spacer(Modifier.width(8.dp))
                 Text("Music Timeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
-                Text("Minutes Listened", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Listening Time", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(14.dp))
             val maxVal = (stats.values.maxOrNull() ?: 60).coerceAtLeast(1)
@@ -282,7 +458,12 @@ fun MusicTimelineChart(stats: Map<String, Int>) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("${minutes}m", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val timeString = when {
+                            minutes < 60 -> "${minutes}m"
+                            minutes % 60 == 0 -> "${minutes / 60}h"
+                            else -> "${minutes / 60}h${minutes % 60}m"
+                        }
+                        Text(timeString, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         Box(
                             modifier = Modifier.height(55.dp).fillMaxWidth(),
@@ -316,7 +497,7 @@ fun MusicTimelineChart(stats: Map<String, Int>) {
 @Composable
 fun TrackCard(track: Track, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.width(140.dp).clickable(onClick = onClick),
+        modifier = Modifier.width(140.dp).bounceClick(scaleDown = 0.95f, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
@@ -342,14 +523,37 @@ fun SectionHeader(title: String) {
 
 @Composable
 fun ErrorMessage(message: String, onRetry: (() -> Unit)? = null) {
-    Column(
+    Card(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Text(text = message, color = MaterialTheme.colorScheme.error)
-        if (onRetry != null) {
-            Button(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Retry")
+        Column(
+            modifier = Modifier.padding(24.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                Icons.Rounded.CloudOff,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (onRetry != null) {
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onRetry,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Retry")
+                }
             }
         }
     }

@@ -8,6 +8,7 @@ import com.melodify.shared.data.MusicRepository
 import com.melodify.shared.domain.model.Playlist
 import com.melodify.shared.domain.model.PlaylistSource
 import com.melodify.shared.domain.model.Track
+import com.melodify.shared.api.spotify.SpotifyPlaylist
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -63,6 +64,32 @@ class LibraryViewModel(
                 spotifyApi.accessToken = savedAccess
                 _isSpotifyConnected.value = true
 
+                // Set up token refresh callback
+                spotifyApi.setRefreshTokenCallback { _ ->
+                    viewModelScope.launch {
+                        val refresh = savedRefresh
+                        if (refresh != null && refresh.isNotBlank()) {
+                            try {
+                                val newToken = spotifyApi.refreshToken(refresh, SpotifyAuthHelper.CLIENT_ID)
+                                spotifyApi.accessToken = newToken.accessToken
+                                val newRefresh = newToken.refreshToken ?: refresh
+                                SpotifyTokenStorage.saveToken(newToken.accessToken, newRefresh)
+                            } catch (e: Exception) {
+                                println("Spotify token refresh failed in callback: ${e.message}")
+                                val isAuthError = e.message?.contains("400") == true ||
+                                                 e.message?.contains("401") == true ||
+                                                 e.message?.contains("invalid_grant") == true ||
+                                                 e.message?.contains("unauthorized") == true
+                                if (isAuthError) {
+                                    spotifyApi.accessToken = null
+                                    _isSpotifyConnected.value = false
+                                    SpotifyTokenStorage.clearToken()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (!savedRefresh.isNullOrBlank()) {
                     try {
                         val newToken = spotifyApi.refreshToken(savedRefresh, SpotifyAuthHelper.CLIENT_ID)
@@ -70,7 +97,17 @@ class LibraryViewModel(
                         val newRefresh = newToken.refreshToken ?: savedRefresh
                         SpotifyTokenStorage.saveToken(newToken.accessToken, newRefresh)
                     } catch (e: Exception) {
-                        println("Spotify token refresh info: ${e.message}, using stored access token")
+                        println("Spotify token refresh failed: ${e.message}")
+                        val isAuthError = e.message?.contains("400") == true ||
+                                         e.message?.contains("401") == true ||
+                                         e.message?.contains("invalid_grant") == true ||
+                                         e.message?.contains("unauthorized") == true
+                        if (isAuthError) {
+                            spotifyApi.accessToken = null
+                            _isSpotifyConnected.value = false
+                            SpotifyTokenStorage.clearToken()
+                            return@launch
+                        }
                     }
                 }
 
@@ -99,6 +136,25 @@ class LibraryViewModel(
         }
     }
 
+    fun disconnectSpotify() {
+        viewModelScope.launch {
+            SpotifyTokenStorage.clearToken()
+            spotifyApi.accessToken = null
+            _isSpotifyConnected.value = false
+            // Clear Spotify playlists from the current UI state but preserve local ones
+            val state = _uiState.value
+            if (state is LibraryUiState.Success) {
+                val updated = state.copy(spotifyPlaylists = emptyList())
+                _uiState.value = updated
+                LibraryStorage.saveLibrary(
+                    spotifyPlaylists = emptyList(),
+                    localPlaylists = state.localPlaylists,
+                    likedTracks = state.likedTracks
+                )
+            }
+        }
+    }
+
     fun createLocalPlaylist(title: String, description: String? = null) {
         if (title.isBlank()) return
         val state = _uiState.value
@@ -120,8 +176,10 @@ class LibraryViewModel(
         val state = _uiState.value
         if (state !is LibraryUiState.Success) return
 
+        var found = false
         val updatedLocal = state.localPlaylists.map { playlist ->
             if (playlist.id == playlistId) {
+                found = true
                 if (playlist.tracks.any { it.id == track.id }) playlist
                 else playlist.copy(
                     tracks = playlist.tracks + track,
@@ -130,8 +188,21 @@ class LibraryViewModel(
             } else playlist
         }
 
-        _uiState.value = state.copy(localPlaylists = updatedLocal)
-        LibraryStorage.saveLibrary(state.spotifyPlaylists, updatedLocal, state.likedTracks)
+        val updatedSpotify = state.spotifyPlaylists.map { playlist ->
+            if (playlist.id == playlistId) {
+                found = true
+                if (playlist.tracks.any { it.id == track.id }) playlist
+                else playlist.copy(
+                    tracks = playlist.tracks + track,
+                    trackCount = playlist.tracks.size + 1
+                )
+            } else playlist
+        }
+
+        if (found) {
+            _uiState.value = state.copy(localPlaylists = updatedLocal, spotifyPlaylists = updatedSpotify)
+            LibraryStorage.saveLibrary(updatedSpotify, updatedLocal, state.likedTracks)
+        }
     }
 
     fun removeTrackFromPlaylist(playlistId: String, trackId: String) {
@@ -148,8 +219,26 @@ class LibraryViewModel(
             } else playlist
         }
 
-        _uiState.value = state.copy(localPlaylists = updatedLocal)
-        LibraryStorage.saveLibrary(state.spotifyPlaylists, updatedLocal, state.likedTracks)
+        val updatedSpotify = state.spotifyPlaylists.map { playlist ->
+            if (playlist.id == playlistId) {
+                val newTracks = playlist.tracks.filterNot { it.id == trackId }
+                playlist.copy(
+                    tracks = newTracks,
+                    trackCount = newTracks.size
+                )
+            } else playlist
+        }
+
+        _uiState.value = state.copy(localPlaylists = updatedLocal, spotifyPlaylists = updatedSpotify)
+        LibraryStorage.saveLibrary(updatedSpotify, updatedLocal, state.likedTracks)
+    }
+
+    fun deletePlaylist(playlistId: String) {
+        val state = _uiState.value as? LibraryUiState.Success ?: return
+        val updatedLocal = state.localPlaylists.filter { it.id != playlistId }
+        val updatedSpotify = state.spotifyPlaylists.filter { it.id != playlistId }
+        _uiState.value = state.copy(localPlaylists = updatedLocal, spotifyPlaylists = updatedSpotify)
+        LibraryStorage.saveLibrary(updatedSpotify, updatedLocal, state.likedTracks)
     }
 
     fun importLocalMusicFiles(paths: List<String>) {
@@ -175,6 +264,52 @@ class LibraryViewModel(
             )
         }
 
+
+        val existingLocal = state.localPlaylists
+        val localFilesPlaylist = existingLocal.firstOrNull { it.id == "local_music_files" }
+
+        val updatedLocal = if (localFilesPlaylist != null) {
+            existingLocal.map { pl ->
+                if (pl.id == "local_music_files") {
+                    pl.copy(
+                        tracks = pl.tracks + newTracks,
+                        trackCount = pl.tracks.size + newTracks.size
+                    )
+                } else pl
+            }
+        } else {
+            val newPl = Playlist(
+                id = "local_music_files",
+                title = "Local Music",
+                description = "Imported local audio files",
+                tracks = newTracks,
+                trackCount = newTracks.size,
+                source = PlaylistSource.LOCAL
+            )
+            existingLocal + newPl
+        }
+
+        _uiState.value = state.copy(localPlaylists = updatedLocal)
+        LibraryStorage.saveLibrary(state.spotifyPlaylists, updatedLocal, state.likedTracks)
+    }
+
+    fun importLocalMusicFilesWithMetadata(metadataList: List<LocalTrackMetadata>) {
+        if (metadataList.isEmpty()) return
+        val state = _uiState.value
+        if (state !is LibraryUiState.Success) return
+
+        val newTracks = metadataList.mapIndexed { index, meta ->
+            Track(
+                id = "local_file_${System.currentTimeMillis()}_$index",
+                title = meta.title,
+                artists = listOf(com.melodify.shared.domain.model.Artist(id = "local_artist_$index", name = meta.artist)),
+                album = meta.album?.let { com.melodify.shared.domain.model.Album(id = "local_album_$index", title = it, thumbnailUrl = meta.artPath) },
+                thumbnailUrl = meta.artPath,
+                durationMs = meta.durationMs,
+                source = com.melodify.shared.domain.model.TrackSource.LOCAL,
+                localPath = meta.path
+            )
+        }
 
         val existingLocal = state.localPlaylists
         val localFilesPlaylist = existingLocal.firstOrNull { it.id == "local_music_files" }
@@ -334,11 +469,16 @@ class LibraryViewModel(
                         val rawTracks = try {
                             spotifyApi.getAllPlaylistTracks(spotifyPlaylist.id)
                         } catch (e: Exception) {
-                            spotifyPlaylist.tracksInfo?.items?.mapNotNull { it.track } ?: emptyList()
+                            try {
+                                spotifyApi.getPlaylistTracksFromEmbed(spotifyPlaylist.id)
+                            } catch (e2: Exception) {
+                                println("Skipping playlist ${spotifyPlaylist.name} due to error: ${e2.message}")
+                                return@mapNotNull null
+                            }
                         }
 
                         // Filter out local files (empty id) and null tracks
-                        val validRawTracks = rawTracks.filter { it.name.isNotBlank() }
+                        val validRawTracks = rawTracks.filter { it.name?.isNotBlank() == true }
 
                         val tracks = validRawTracks.mapIndexed { index, spotifyTrack ->
                             importedTracks++
@@ -346,28 +486,36 @@ class LibraryViewModel(
                                 imported = importedTracks,
                                 total = totalTracks,
                                 currentPlaylist = spotifyPlaylist.name,
-                                currentTrack = spotifyTrack.name
+                                currentTrack = spotifyTrack.name ?: "Unknown Track"
                             )
 
                             Track(
-                                id = if (spotifyTrack.id.isNotBlank()) spotifyTrack.id else "sp_${spotifyPlaylist.id}_$index",
-                                title = spotifyTrack.name,
-                                artists = spotifyTrack.artists.map { com.melodify.shared.domain.model.Artist(it.id, it.name) },
-                                album = spotifyTrack.album?.let { com.melodify.shared.domain.model.Album(it.id, it.name, it.images.firstOrNull()?.url) },
+                                id = if (spotifyTrack.id?.isNotBlank() == true) spotifyTrack.id else "sp_${spotifyPlaylist.id}_$index",
+                                title = spotifyTrack.name ?: "Unknown Track",
+                                artists = spotifyTrack.artists?.mapNotNull { it }?.map { com.melodify.shared.domain.model.Artist(it.id ?: "", it.name ?: "Unknown") } ?: emptyList(),
+                                album = spotifyTrack.album?.let { com.melodify.shared.domain.model.Album(it.id ?: "", it.name ?: "", it.images?.firstOrNull()?.url) },
                                 thumbnailUrl = spotifyTrack.album?.images?.firstOrNull()?.url ?: spotifyPlaylist.images.firstOrNull()?.url,
-                                durationMs = spotifyTrack.durationMs,
+                                durationMs = spotifyTrack.durationMs ?: 0L,
                                 source = com.melodify.shared.domain.model.TrackSource.SPOTIFY,
                                 spotifyId = spotifyTrack.id
                             )
                         }
+
+                        val currentStateLocal = _uiState.value
+                        val existingSpotifyList = (currentStateLocal as? LibraryUiState.Success)?.spotifyPlaylists ?: emptyList()
+                        val existingPlaylist = existingSpotifyList.find { it.id == spotifyPlaylist.id }
+                        val existingTracks = existingPlaylist?.tracks ?: emptyList()
+                        val existingTrackIds = existingTracks.map { it.id }.toSet()
+                        val newTracks = tracks.filter { it.id !in existingTrackIds }
+                        val finalTracks = existingTracks + newTracks
 
                         Playlist(
                             id = spotifyPlaylist.id,
                             title = spotifyPlaylist.name,
                             description = spotifyPlaylist.description,
                             thumbnailUrl = spotifyPlaylist.images.firstOrNull()?.url,
-                            trackCount = tracks.size,
-                            tracks = tracks,
+                            trackCount = finalTracks.size,
+                            tracks = finalTracks,
                             source = PlaylistSource.SPOTIFY,
                             spotifyId = spotifyPlaylist.id
                         )
@@ -393,6 +541,72 @@ class LibraryViewModel(
             } catch (e: Exception) {
                 _importProgress.value = null
                 _uiState.value = LibraryUiState.Error("Failed to import Spotify playlists: ${e.message}")
+            }
+        }
+    }
+
+    fun importYouTubePlaylists(token: String? = null) {
+        viewModelScope.launch {
+            try {
+                _importProgress.value = ImportProgress(0, 100, "Fetching YouTube Playlists...")
+                val res = musicRepository.fetchUserPlaylists(token)
+                val ytPlaylists = res.getOrThrow()
+                
+                if (ytPlaylists.isEmpty()) {
+                    _importProgress.value = null
+                    return@launch
+                }
+                
+                val totalPlaylists = ytPlaylists.size
+                var importedPlaylistsCount = 0
+                
+                val newPlaylists = ytPlaylists.mapNotNull { ytPlaylist ->
+                    try {
+                        _importProgress.value = ImportProgress(importedPlaylistsCount, totalPlaylists, ytPlaylist.title)
+                        val tracks = musicRepository.getYouTubePlaylistTracks(ytPlaylist.id).getOrThrow()
+                        
+                        val currentStateLocal = _uiState.value
+                        val existingLocalList = (currentStateLocal as? LibraryUiState.Success)?.localPlaylists ?: emptyList()
+                        val ytPlaylistId = "yt_${ytPlaylist.id}"
+                        val existingPlaylist = existingLocalList.find { it.id == ytPlaylistId }
+                        val existingTracks = existingPlaylist?.tracks ?: emptyList()
+                        val existingTrackIds = existingTracks.map { it.id }.toSet()
+                        val newTracks = tracks.filter { it.id !in existingTrackIds }
+                        val finalTracks = existingTracks + newTracks
+
+                        importedPlaylistsCount++
+                        Playlist(
+                            id = ytPlaylistId,
+                            title = ytPlaylist.title,
+                            description = "Imported from YouTube Music",
+                            thumbnailUrl = ytPlaylist.thumbnailUrl ?: finalTracks.firstOrNull()?.thumbnailUrl,
+                            trackCount = finalTracks.size,
+                            tracks = finalTracks,
+                            source = PlaylistSource.LOCAL
+                        )
+                    } catch (e: Exception) {
+                        println("Failed to import YouTube playlist ${ytPlaylist.title}: ${e.message}")
+                        null
+                    }
+                }
+                
+                val currentState = _uiState.value
+                val localList = (currentState as? LibraryUiState.Success)?.localPlaylists ?: emptyList()
+                val spotifyList = (currentState as? LibraryUiState.Success)?.spotifyPlaylists ?: emptyList()
+                val likedList = (currentState as? LibraryUiState.Success)?.likedTracks ?: emptyList()
+                
+                val updatedLocal = localList + newPlaylists
+                
+                _uiState.value = LibraryUiState.Success(
+                    localPlaylists = updatedLocal,
+                    spotifyPlaylists = spotifyList,
+                    likedTracks = likedList
+                )
+                LibraryStorage.saveLibrary(spotifyList, updatedLocal, likedList)
+                _importProgress.value = null
+            } catch (e: Exception) {
+                _importProgress.value = null
+                _uiState.value = LibraryUiState.Error("Failed to import YouTube playlists: ${e.message}")
             }
         }
     }
@@ -441,20 +655,42 @@ class LibraryViewModel(
                 val playlistId = idMatch?.groupValues?.get(1)
                     ?: throw IllegalArgumentException("Invalid Spotify or YouTube playlist link")
 
-                val spotifyPlaylist = spotifyApi.getPlaylist(playlistId)
-                val totalTracks = spotifyPlaylist.tracksInfo?.total ?: 0
+                // Try API if authenticated, otherwise use embed scraping
+                val spotifyPlaylist: SpotifyPlaylist? = if (spotifyApi.hasValidToken()) {
+                    try {
+                        spotifyApi.getPlaylist(playlistId)
+                    } catch (e: Exception) {
+                        null // Fall through to embed scraping
+                    }
+                } else null
+
+                val playlistName = spotifyPlaylist?.name ?: "Spotify Playlist"
+                val totalTracks = spotifyPlaylist?.tracksInfo?.total ?: 0
                 var importedTracks = 0
 
-                _importProgress.value = ImportProgress(0, totalTracks, spotifyPlaylist.name)
+                _importProgress.value = ImportProgress(0, totalTracks, playlistName)
 
-                val rawTracks = try {
-                    spotifyApi.getAllPlaylistTracks(spotifyPlaylist.id)
-                } catch (e: Exception) {
-                    spotifyPlaylist.tracksInfo?.items?.mapNotNull { it.track } ?: emptyList()
+                val rawTracks = if (spotifyApi.hasValidToken()) {
+                    try {
+                        spotifyApi.getAllPlaylistTracks(playlistId)
+                    } catch (e: Exception) {
+                        try {
+                            spotifyApi.getPlaylistTracksFromEmbed(playlistId)
+                        } catch (e2: Exception) {
+                            throw Exception("Failed to fetch tracks for playlist $playlistName: ${e2.message}")
+                        }
+                    }
+                } else {
+                    // No auth — use embed scraping directly
+                    try {
+                        spotifyApi.getPlaylistTracksFromEmbed(playlistId)
+                    } catch (e: Exception) {
+                        throw Exception("Failed to fetch tracks from Spotify embed: ${e.message}")
+                    }
                 }
 
                 // Filter out local files and null tracks (they have empty id or null track)
-                val validRawTracks = rawTracks.filter { it.id.isNotBlank() && it.name.isNotBlank() }
+                val validRawTracks = rawTracks.filter { it.id?.isNotBlank() == true && it.name?.isNotBlank() == true }
 
                 // Map Spotify tracks directly without blocking on YouTube searches
                 val tracks = validRawTracks.mapIndexed { index, spotifyTrack ->
@@ -462,31 +698,31 @@ class LibraryViewModel(
                     _importProgress.value = ImportProgress(
                         imported = importedTracks,
                         total = totalTracks,
-                        currentPlaylist = spotifyPlaylist.name,
-                        currentTrack = spotifyTrack.name
+                        currentPlaylist = playlistName,
+                        currentTrack = spotifyTrack.name ?: "Unknown Track"
                     )
 
                     Track(
-                        id = if (spotifyTrack.id.isNotBlank()) spotifyTrack.id else "sp_${spotifyPlaylist.id}_$index",
-                        title = spotifyTrack.name,
-                        artists = spotifyTrack.artists.map { com.melodify.shared.domain.model.Artist(it.id, it.name) },
-                        album = spotifyTrack.album?.let { com.melodify.shared.domain.model.Album(it.id, it.name, it.images.firstOrNull()?.url) },
-                        thumbnailUrl = spotifyTrack.album?.images?.firstOrNull()?.url ?: spotifyPlaylist.images.firstOrNull()?.url,
-                        durationMs = spotifyTrack.durationMs,
+                        id = if (spotifyTrack.id?.isNotBlank() == true) spotifyTrack.id else "sp_${playlistId}_$index",
+                        title = spotifyTrack.name ?: "Unknown Track",
+                        artists = spotifyTrack.artists?.mapNotNull { it }?.map { com.melodify.shared.domain.model.Artist(it.id ?: "", it.name ?: "Unknown") } ?: emptyList(),
+                        album = spotifyTrack.album?.let { com.melodify.shared.domain.model.Album(it.id ?: "", it.name ?: "", it.images?.firstOrNull()?.url) },
+                        thumbnailUrl = spotifyTrack.album?.images?.firstOrNull()?.url ?: spotifyPlaylist?.images?.firstOrNull()?.url,
+                        durationMs = spotifyTrack.durationMs ?: 0L,
                         source = com.melodify.shared.domain.model.TrackSource.SPOTIFY,
                         spotifyId = spotifyTrack.id
                     )
                 }
 
                 val newPlaylist = Playlist(
-                    id = spotifyPlaylist.id,
-                    title = spotifyPlaylist.name,
-                    description = spotifyPlaylist.description,
-                    thumbnailUrl = spotifyPlaylist.images.firstOrNull()?.url,
+                    id = spotifyPlaylist?.id ?: playlistId,
+                    title = playlistName,
+                    description = spotifyPlaylist?.description,
+                    thumbnailUrl = spotifyPlaylist?.images?.firstOrNull()?.url ?: tracks.firstOrNull()?.thumbnailUrl,
                     trackCount = tracks.size,
                     tracks = tracks,
                     source = PlaylistSource.SPOTIFY,
-                    spotifyId = spotifyPlaylist.id
+                    spotifyId = spotifyPlaylist?.id ?: playlistId
                 )
 
                 _importProgress.value = null
@@ -508,6 +744,25 @@ class LibraryViewModel(
                 _importProgress.value = null
                 _uiState.value = LibraryUiState.Error("Failed to import playlist: ${e.message}")
             }
+        }
+    }
+
+    fun toggleLike(track: Track) {
+        val currentState = _uiState.value
+        if (currentState is LibraryUiState.Success) {
+            val isLiked = currentState.likedTracks.any { it.id == track.id }
+            val newLikedTracks = if (isLiked) {
+                currentState.likedTracks.filter { it.id != track.id }
+            } else {
+                currentState.likedTracks + track
+            }
+            
+            _uiState.value = currentState.copy(likedTracks = newLikedTracks)
+            LibraryStorage.saveLibrary(
+                currentState.spotifyPlaylists,
+                currentState.localPlaylists,
+                newLikedTracks
+            )
         }
     }
 
@@ -536,3 +791,12 @@ data class ImportProgress(
 ) {
     val percentage: Float get() = if (total > 0) imported.toFloat() / total.toFloat() else 0f
 }
+
+data class LocalTrackMetadata(
+    val path: String,
+    val title: String,
+    val artist: String,
+    val album: String?,
+    val durationMs: Long,
+    val artPath: String?
+)

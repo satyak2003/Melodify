@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Queue
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,8 +42,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +65,13 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun SearchScreen(navController: NavController, playerViewModel: PlayerViewModel) {
     val viewModel: SearchViewModel = koinViewModel()
+    val libraryViewModel: com.melodify.shared.presentation.LibraryViewModel = koinViewModel()
+    val libraryUiState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+    val allPlaylists = if (libraryUiState is com.melodify.shared.presentation.LibraryUiState.Success) {
+        val successState = libraryUiState as com.melodify.shared.presentation.LibraryUiState.Success
+        successState.localPlaylists + successState.spotifyPlaylists
+    } else emptyList()
+    
     val query by viewModel.query.collectAsStateWithLifecycle()
     val searchState by viewModel.searchResults.collectAsStateWithLifecycle()
     
@@ -143,9 +153,11 @@ fun SearchScreen(navController: NavController, playerViewModel: PlayerViewModel)
                         items(state.results.tracks) { track ->
                             TrackListItem(
                                 track = track,
+                                allPlaylists = allPlaylists,
                                 onClick = { playerViewModel.playTracks(state.results.tracks, state.results.tracks.indexOf(track)) },
                                 onAddToQueue = { playerViewModel.addToQueue(track) },
-                                onDownload = { playerViewModel.downloadTrack(track) }
+                                onDownload = { playerViewModel.downloadTrack(track) },
+                                onAddToPlaylist = { playlistId -> libraryViewModel.addTrackToPlaylist(playlistId, track) }
                             )
                         }
                     }
@@ -198,13 +210,23 @@ fun SearchEmptyState(onQuerySelect: (String) -> Unit) {
 @Composable
 fun TrackListItem(
     track: Track,
+    allPlaylists: List<com.melodify.shared.domain.model.Playlist> = emptyList(),
     onClick: () -> Unit,
     onAddToQueue: (() -> Unit)? = null,
-    onDownload: (() -> Unit)? = null
+    onDownload: (() -> Unit)? = null,
+    onAddToPlaylist: ((String) -> Unit)? = null
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val isOffline by com.melodify.shared.utils.NetworkMonitor.isOffline.collectAsState()
+    val isDownloaded = remember(track) { com.melodify.shared.data.storage.TrackDownloader.isDownloaded(track) }
+    
+    val isAvailable = isDownloaded || !isOffline
+    val itemAlpha = if (isAvailable) 1f else 0.4f
 
     ListItem(
+        modifier = Modifier
+            .clickable(enabled = isAvailable, onClick = onClick)
+            .alpha(itemAlpha),
         headlineContent = { Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = { Text("${track.artistNames} • ${track.album?.title ?: ""}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) },
         leadingContent = {
@@ -238,10 +260,28 @@ fun TrackListItem(
                                 showMenu = false
                             }
                         )
+                        if (allPlaylists.isNotEmpty()) {
+                            androidx.compose.material3.HorizontalDivider()
+                            Text(
+                                "Add to Playlist:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                            allPlaylists.forEach { pl ->
+                                DropdownMenuItem(
+                                    text = { Text(pl.title) },
+                                    leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },
+                                    onClick = {
+                                        onAddToPlaylist?.invoke(pl.id)
+                                        showMenu = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
-        },
-        modifier = Modifier.clickable(onClick = onClick)
+        }
     )
 }

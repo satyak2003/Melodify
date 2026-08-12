@@ -18,4 +18,11 @@ object ExperimentalSettingsStorage {
     fun setSyncListeningEnabled(enabled: Boolean) {
         _isSyncListeningEnabled.value = enabled
     }
+
+    private val _isAutoPlayEnabled = MutableStateFlow(true)
+    val isAutoPlayEnabled: StateFlow<Boolean> = _isAutoPlayEnabled.asStateFlow()
+
+    fun setAutoPlayEnabled(enabled: Boolean) {
+        _isAutoPlayEnabled.value = enabled
+    }
 }

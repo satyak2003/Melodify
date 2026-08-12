@@ -15,7 +15,7 @@ fun main() = application {
     }
 
     val iconPainter = runCatching {
-        val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.png")
+        val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.jpg")
         if (stream != null) {
             BitmapPainter(ImageIO.read(stream).toComposeImageBitmap())
         } else null

@@ -38,6 +38,8 @@ actual class AudioPlayer {
     actual val hasMedia: StateFlow<Boolean> = _hasMedia.asStateFlow()
 
     actual var onTrackEnded: (() -> Unit)? = null
+    actual var onSkipNext: (() -> Unit)? = null
+    actual var onSkipPrevious: (() -> Unit)? = null
 
     // JavaFX Media Engine
     private var fxMediaPlayer: MediaPlayer? = null
@@ -68,7 +70,7 @@ actual class AudioPlayer {
         }
     }
 
-    actual fun play(url: String, track: Track) {
+    actual fun play(url: String, track: Track, initialSeekMs: Long) {
         _playerError.value = null
         stop()
 
@@ -93,6 +95,10 @@ actual class AudioPlayer {
                     player.setOnReady {
                         _durationMs.value = media.duration.toMillis().toLong()
                         _isBuffering.value = false
+                        if (initialSeekMs > 0L) {
+                            player.seek(javafx.util.Duration(initialSeekMs.toDouble()))
+                            _positionMs.value = initialSeekMs
+                        }
                         player.play()
                     }
 
@@ -123,7 +129,7 @@ actual class AudioPlayer {
                         val err = player.error?.message ?: "JavaFX playback error"
                         println("JavaFX Media error: $err")
                         if (vlcAvailable) {
-                            playVlc(url)
+                            playVlc(url, initialSeekMs)
                         } else {
                             _playerError.value = "Playback error: $err"
                             _isPlaying.value = false
@@ -133,7 +139,7 @@ actual class AudioPlayer {
                 } catch (e: Throwable) {
                     println("Failed to start JavaFX playback: ${e.message}")
                     if (vlcAvailable) {
-                        playVlc(url)
+                        playVlc(url, initialSeekMs)
                     } else {
                         _playerError.value = "Unable to play audio."
                         _isBuffering.value = false
@@ -145,16 +151,26 @@ actual class AudioPlayer {
 
 
         if (vlcAvailable) {
-            playVlc(url)
+            playVlc(url, initialSeekMs)
         } else {
             _playerError.value = "Unable to play audio. Neither JavaFX Media nor 64-bit VLC is available."
             _isBuffering.value = false
         }
     }
 
-    private fun playVlc(url: String) {
+    private fun playVlc(url: String, initialSeekMs: Long) {
         try {
-            vlcComponent?.mediaPlayer()?.media()?.play(url)
+            val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
+                StreamProxy.getProxyUrl(url)
+            } else {
+                url
+            }
+            val options = mutableListOf<String>()
+            if (initialSeekMs > 0L) {
+                options.add(":start-time=${initialSeekMs / 1000f}")
+                _positionMs.value = initialSeekMs
+            }
+            vlcComponent?.mediaPlayer()?.media()?.play(mediaUrl, *options.toTypedArray())
         } catch (e: Throwable) {
             _playerError.value = "VLC Playback error: ${e.message}"
             _isBuffering.value = false
@@ -262,6 +278,18 @@ actual class AudioPlayer {
             }
             override fun lengthChanged(mediaPlayer: VlcMediaPlayer, newLength: Long) {
                 _durationMs.value = newLength
+            }
+            override fun finished(mediaPlayer: VlcMediaPlayer) {
+                if (_durationMs.value <= 0L) {
+                    _playerError.value = "VLC playback error (Finished instantly)"
+                    _isPlaying.value = false
+                    _isBuffering.value = false
+                } else {
+                    _isPlaying.value = false
+                    _positionMs.value = _durationMs.value
+                    positionJob?.cancel()
+                    onTrackEnded?.invoke()
+                }
             }
         })
     }

@@ -21,7 +21,8 @@ sealed class HomeUiState {
         val lastPlayedTrack: Track? = null,
         val lastPlayedPositionMs: Long = 0L,
         val lastPlayedDurationMs: Long = 0L,
-        val weeklyStats: Map<String, Int> = emptyMap()
+        val weeklyStats: Map<String, Int> = emptyMap(),
+        val recommendedTracks: List<Track> = emptyList()
     ) : HomeUiState()
 
     data class Error(val message: String) : HomeUiState()
@@ -64,7 +65,8 @@ class HomeViewModel(private val musicRepository: MusicRepository) : ViewModel() 
                             lastPlayedTrack = lastPlayed?.currentTrack,
                             lastPlayedPositionMs = lastPlayed?.positionMs ?: 0L,
                             lastPlayedDurationMs = lastPlayed?.durationMs ?: 0L,
-                            weeklyStats = stats
+                            weeklyStats = stats,
+                            recommendedTracks = com.melodify.shared.domain.RecommendationEngine.getRecommendations(count = 20)
                         )
                     } else {
                         fetchFallbackTrending(lastPlayed, stats)
@@ -87,11 +89,17 @@ class HomeViewModel(private val musicRepository: MusicRepository) : ViewModel() 
                     lastPlayedTrack = lastPlayed?.currentTrack,
                     lastPlayedPositionMs = lastPlayed?.positionMs ?: 0L,
                     lastPlayedDurationMs = lastPlayed?.durationMs ?: 0L,
-                    weeklyStats = stats
+                    weeklyStats = stats,
+                    recommendedTracks = com.melodify.shared.domain.RecommendationEngine.getRecommendations(count = 20)
                 )
             }
             .onFailure { e ->
-                _uiState.value = HomeUiState.Error(e.message ?: "Failed to load home content")
+                val msg = when {
+                    e is java.net.UnknownHostException || e is java.net.ConnectException || e.message?.contains("Unable to resolve host") == true -> "You're offline — listen to your downloaded music!"
+                    e is java.io.IOException -> "Connection lost. Check your network and try again."
+                    else -> "Something went wrong. Tap retry to try again."
+                }
+                _uiState.value = HomeUiState.Error(msg)
             }
     }
 

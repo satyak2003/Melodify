@@ -16,8 +16,10 @@ expect class AudioPlayer {
     val playerError: StateFlow<String?>
     val hasMedia: StateFlow<Boolean>
     var onTrackEnded: (() -> Unit)?
+    var onSkipNext: (() -> Unit)?
+    var onSkipPrevious: (() -> Unit)?
 
-    fun play(url: String, track: Track)
+    fun play(url: String, track: Track, initialSeekMs: Long = 0L)
     fun resume()
     fun pause()
     fun seekTo(positionMs: Long)

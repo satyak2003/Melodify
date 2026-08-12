@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +34,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.melodify.shared.api.spotify.SpotifyAuthHelper
 import com.melodify.android.ui.navigation.Screen
 import org.koin.compose.viewmodel.koinViewModel
+import kotlinx.coroutines.launch
 
 
 
@@ -49,12 +52,16 @@ fun LibraryScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var playlistTitleInput by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
+
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
 
     val audioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            val paths = uris.mapNotNull { uri ->
+            val metadataList = uris.mapNotNull { uri ->
                 try {
                     val localDir = java.io.File(context.filesDir, "local_music")
                     if (!localDir.exists()) localDir.mkdirs()
@@ -63,14 +70,57 @@ fun LibraryScreen(
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         destFile.outputStream().use { output -> input.copyTo(output) }
                     }
-                    destFile.absolutePath
+                    
+                    // Extract metadata using MediaMetadataRetriever
+                    val retriever = android.media.MediaMetadataRetriever()
+                    var title: String? = null
+                    var artist: String? = null
+                    var album: String? = null
+                    var durationMs: Long = 0L
+                    var artPath: String? = null
+                    try {
+                        retriever.setDataSource(destFile.absolutePath)
+                        title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+                        artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                        album = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                        val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        durationMs = durationStr?.toLongOrNull() ?: 0L
+                        
+                        // Extract embedded album art
+                        val artBytes = retriever.embeddedPicture
+                        if (artBytes != null) {
+                            val artFile = java.io.File(localDir, destFile.nameWithoutExtension + "_art.png")
+                            artFile.writeBytes(artBytes)
+                            artPath = artFile.absolutePath
+                        }
+                    } catch (e: Exception) {
+                        println("Metadata extraction failed: ${e.message}")
+                    } finally {
+                        retriever.release()
+                    }
+                    
+                    // Fallback to filename parsing if metadata is missing
+                    val nameWithoutExt = destFile.nameWithoutExtension
+                    val finalTitle = title?.takeIf { it.isNotBlank() } 
+                        ?: nameWithoutExt.substringBefore("-").trim().ifEmpty { nameWithoutExt }
+                    val finalArtist = artist?.takeIf { it.isNotBlank() }
+                        ?: if (nameWithoutExt.contains("-")) nameWithoutExt.substringAfter("-").trim() else "Local Audio"
+                    
+                    com.melodify.shared.presentation.LocalTrackMetadata(
+                        path = destFile.absolutePath,
+                        title = finalTitle,
+                        artist = finalArtist,
+                        album = album,
+                        durationMs = durationMs,
+                        artPath = artPath
+                    )
                 } catch (e: Exception) {
                     println("Failed to copy audio URI $uri: ${e.message}")
                     null
                 }
             }
-            if (paths.isNotEmpty()) {
-                viewModel.importLocalMusicFiles(paths)
+            if (metadataList.isNotEmpty()) {
+                viewModel.importLocalMusicFilesWithMetadata(metadataList)
             }
         }
     }
@@ -107,53 +157,64 @@ fun LibraryScreen(
         )
     }
 
+    if (showDeleteDialog && playlistToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false; playlistToDelete = null },
+            title = { Text("Delete Playlist") },
+            text = { Text("Are you sure you want to delete \"${playlistToDelete!!.title}\"? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deletePlaylist(playlistToDelete!!.id)
+                        showDeleteDialog = false
+                        playlistToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false; playlistToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Header
-        Box(
+        // Header - consistent with Home and Search screens
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                            MaterialTheme.colorScheme.background
-                        )
-                    )
-                )
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    "Your Library",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { navController.navigate(Screen.About.route) }) {
-                        Icon(
-                            Icons.Rounded.Info,
-                            contentDescription = "About",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                    IconButton(onClick = { showCreatePlaylistDialog = true }) {
-                        Icon(
-                            Icons.Rounded.Add,
-                            contentDescription = "Create Playlist",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
+            Text(
+                "Your Library",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { navController.navigate(Screen.About.route) }) {
+                    Icon(
+                        Icons.Rounded.Info,
+                        contentDescription = "About",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = { showCreatePlaylistDialog = true }) {
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = "Create Playlist",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
@@ -177,13 +238,31 @@ fun LibraryScreen(
                 Text("Local Audio", fontWeight = FontWeight.Bold)
             }
 
-            if (isSpotifyConnected) {
-                OutlinedButton(
-                    onClick = { viewModel.logoutSpotify() },
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Logout Spotify")
-                }
+
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { 
+                    coroutineScope.launch {
+                        val tokens = com.melodify.shared.data.storage.AuthManager.loginWithGoogle()
+                        // Pass the access token - if YouTube cookies are available, InnerTube will be used instead
+                        viewModel.importYouTubePlaylists(tokens?.accessToken)
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            ) {
+                Icon(Icons.Rounded.VideoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Sync YouTube", fontWeight = FontWeight.Bold)
             }
         }
 
@@ -223,7 +302,8 @@ fun LibraryScreen(
                                 playlist = playlist,
                                 onClick = {
                                     navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id))
-                                }
+                                },
+                                onLongClick = { playlistToDelete = playlist; showDeleteDialog = true }
                             )
                         }
                     }
@@ -240,7 +320,8 @@ fun LibraryScreen(
                                 playlist = playlist,
                                 onClick = {
                                     navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id))
-                                }
+                                },
+                                onLongClick = { playlistToDelete = playlist; showDeleteDialog = true }
                             )
                         }
                     }
@@ -340,8 +421,9 @@ fun ImportProgressCard(progress: ImportProgress) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun PlaylistItem(playlist: Playlist, onClick: () -> Unit) {
+fun PlaylistItem(playlist: Playlist, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
     ListItem(
         headlineContent = {
             Text(
@@ -383,7 +465,10 @@ fun PlaylistItem(playlist: Playlist, onClick: () -> Unit) {
                 }
             }
         },
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
     )
 }
 

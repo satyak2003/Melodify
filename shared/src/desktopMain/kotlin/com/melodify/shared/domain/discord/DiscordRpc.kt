@@ -9,7 +9,7 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.encodeToString
 
 actual class DiscordRpc {
-    private val CLIENT_ID = "1273948572834712839" // Melodify App ID
+    private val CLIENT_ID = "1531981374993727559" // Melodify App ID
     private var pipe: RandomAccessFile? = null
     private var connected = false
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -24,8 +24,13 @@ actual class DiscordRpc {
             for (i in 0..9) {
                 try {
                     val p = RandomAccessFile("\\\\.\\pipe\\discord-ipc-$i", "rw")
-                    val handshake = Json.encodeToString(mapOf("v" to 1, "client_id" to CLIENT_ID))
+                    val handshake = buildJsonObject {
+                        put("v", 1)
+                        put("client_id", CLIENT_ID)
+                    }.toString()
                     sendRaw(p, 0, handshake)
+                    readRaw(p) // Read response
+
                     pipe = p
                     connected = true
                     break
@@ -43,6 +48,21 @@ actual class DiscordRpc {
         header.putInt(bytes.size)
         p.write(header.array())
         p.write(bytes)
+    }
+
+    private fun readRaw(p: RandomAccessFile): String? {
+        try {
+            val header = ByteArray(8)
+            p.readFully(header)
+            val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+            val opcode = buffer.int
+            val length = buffer.int
+            val data = ByteArray(length)
+            p.readFully(data)
+            return String(data, Charsets.UTF_8)
+        } catch (e: Exception) {
+            return null
+        }
     }
 
     actual fun updatePresence(track: Track, isPlaying: Boolean, positionMs: Long) {
@@ -91,6 +111,7 @@ actual class DiscordRpc {
                     }
                 }
                 sendRaw(activePipe, 1, payload.toString())
+                readRaw(activePipe)
             } catch (e: Exception) {
                 connected = false
                 pipe = null
@@ -111,6 +132,7 @@ actual class DiscordRpc {
                     }
                 }
                 sendRaw(activePipe, 1, payload.toString())
+                readRaw(activePipe)
             } catch (e: Exception) {
                 connected = false
                 pipe = null

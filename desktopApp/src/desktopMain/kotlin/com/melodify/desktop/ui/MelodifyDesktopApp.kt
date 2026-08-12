@@ -1,3 +1,4 @@
+@file:OptIn(org.jetbrains.compose.resources.ExperimentalResourceApi::class)
 package com.melodify.desktop.ui
 
 import androidx.compose.foundation.background
@@ -14,8 +15,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Brush
 
 import com.melodify.desktop.ui.theme.MelodifyDesktopTheme
 import com.melodify.desktop.ui.screens.*
@@ -23,7 +26,7 @@ import com.melodify.shared.domain.model.currentTrack
 import com.melodify.shared.presentation.PlayerViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
-enum class DesktopScreen { HOME, SEARCH, LIBRARY, NOW_PLAYING, ABOUT }
+enum class DesktopScreen { HOME, SEARCH, LIBRARY, NOW_PLAYING, PROFILE, SETTINGS, ABOUT }
 
 @Composable
 fun MelodifyDesktopApp() {
@@ -72,6 +75,8 @@ fun MelodifyDesktopApp() {
                         DesktopScreen.SEARCH -> DesktopSearchScreen(playerViewModel)
                         DesktopScreen.LIBRARY -> DesktopLibraryScreen(playerViewModel)
                         DesktopScreen.NOW_PLAYING -> DesktopNowPlayingScreen(playerViewModel)
+                        DesktopScreen.PROFILE -> DesktopProfileScreen()
+                        DesktopScreen.SETTINGS -> DesktopSettingsScreen()
                         DesktopScreen.ABOUT -> DesktopAboutScreen()
                     }
                 }
@@ -97,7 +102,14 @@ fun DesktopSidebar(
         modifier = Modifier
             .width(220.dp)
             .fillMaxHeight()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                    )
+                )
+            )
             .padding(16.dp)
     ) {
         // Logo
@@ -107,7 +119,7 @@ fun DesktopSidebar(
         ) {
             val logoBitmap = remember {
                 runCatching {
-                    val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.png")
+                    val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.jpg")
                     if (stream != null) javax.imageio.ImageIO.read(stream).toComposeImageBitmap() else null
                 }.getOrNull()
             }
@@ -131,8 +143,9 @@ fun DesktopSidebar(
             Text(
                 "Melodify",
                 style = MaterialTheme.typography.headlineSmall,
+                fontFamily = FontFamily.Default, // Clean default sans-serif font
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.primary
             )
         }
 
@@ -171,6 +184,16 @@ fun DesktopSidebar(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         Spacer(Modifier.height(8.dp))
+        SidebarNavItem(
+            icon = Icons.Rounded.AccountCircle,
+            label = "Profile",
+            selected = currentScreen == DesktopScreen.PROFILE
+        ) { onNavigate(DesktopScreen.PROFILE) }
+        SidebarNavItem(
+            icon = Icons.Rounded.Settings,
+            label = "Settings",
+            selected = currentScreen == DesktopScreen.SETTINGS
+        ) { onNavigate(DesktopScreen.SETTINGS) }
         SidebarNavItem(
             icon = Icons.Rounded.Info,
             label = "About",

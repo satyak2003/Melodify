@@ -1,6 +1,7 @@
 package com.melodify.android.ui.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,9 +13,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -42,9 +45,16 @@ import com.melodify.shared.presentation.PlayerViewModel
 
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import com.melodify.shared.ui.modifiers.bounceClick
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 
 @Composable
-fun MiniPlayer(viewModel: PlayerViewModel, onClick: () -> Unit) {
+fun MiniPlayerContent(
+    viewModel: PlayerViewModel,
+    onClick: () -> Unit
+) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val track = playerState.currentTrack ?: return
     val progress = if (playerState.durationMs > 0) playerState.positionMs.toFloat() / playerState.durationMs.toFloat() else 0f
@@ -62,10 +72,28 @@ fun MiniPlayer(viewModel: PlayerViewModel, onClick: () -> Unit) {
             }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xCC000000)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, androidx.compose.ui.graphics.Color(0x33FFFFFF))
     ) {
         Box {
+            // Drag handle indicator at top
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp)
+                    .padding(top = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(40.dp)
+                        .height(4.dp)
+                        .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.3f))
+                        .align(Alignment.TopCenter)
+                        .clip(RoundedCornerShape(2.dp))
+                )
+            }
+
             // Progress bar at bottom of card
             LinearProgressIndicator(
                 progress = { progress },
@@ -82,19 +110,28 @@ fun MiniPlayer(viewModel: PlayerViewModel, onClick: () -> Unit) {
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(model = track.thumbnailUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                        AsyncImage(
+                            model = track.thumbnailUrl, 
+                            contentDescription = null, 
+                            modifier = Modifier.size(48.dp)
+                                .clip(RoundedCornerShape(8.dp)), 
+                            contentScale = ContentScale.Crop
+                        )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Text(track.artistNames, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = androidx.compose.ui.graphics.Color.White)
+                            Text(track.artistNames, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
                         }
                     }
                 }
-                IconButton(onClick = viewModel::togglePlayPause) {
-                    Icon(if (playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(Modifier.bounceClick(scaleDown = 0.7f) { viewModel.playPrevious() }.padding(12.dp)) {
+                    Icon(Icons.Rounded.SkipPrevious, null, tint = androidx.compose.ui.graphics.Color.White)
                 }
-                IconButton(onClick = viewModel::playNext) {
-                    Icon(Icons.Rounded.SkipNext, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(Modifier.bounceClick(scaleDown = 0.7f) { viewModel.togglePlayPause() }.padding(12.dp)) {
+                    Icon(if (playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = androidx.compose.ui.graphics.Color.White)
+                }
+                Box(Modifier.bounceClick(scaleDown = 0.7f) { viewModel.playNext() }.padding(12.dp)) {
+                    Icon(Icons.Rounded.SkipNext, null, tint = androidx.compose.ui.graphics.Color.White)
                 }
             }
         }

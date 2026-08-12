@@ -20,16 +20,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -40,6 +43,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +65,7 @@ import com.melodify.shared.presentation.LibraryUiState
 import com.melodify.shared.presentation.LibraryViewModel
 import com.melodify.shared.presentation.PlayerViewModel
 import org.koin.compose.viewmodel.koinViewModel
+import androidx.activity.compose.BackHandler
 
 @Composable
 fun PlaylistDetailScreen(
@@ -70,6 +75,7 @@ fun PlaylistDetailScreen(
 ) {
     val libraryViewModel: LibraryViewModel = koinViewModel()
     val uiState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+    val downloadingTracks by playerViewModel.downloadingTracks.collectAsState()
 
     val playlist: Playlist? = when (val state = uiState) {
         is LibraryUiState.Success -> {
@@ -77,6 +83,8 @@ fun PlaylistDetailScreen(
         }
         else -> null
     }
+
+    BackHandler(onBack = onBack)
 
     Box(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
@@ -158,8 +166,10 @@ fun PlaylistDetailScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Spacer(Modifier.height(4.dp))
+                                    val totalDurationMs = playlist.tracks.sumOf { it.durationMs }
+                                    val durationMin = totalDurationMs / 60000
                                     Text(
-                                        "${playlist.tracks.size} songs",
+                                        "${playlist.tracks.size} songs • $durationMin mins",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -189,6 +199,33 @@ fun PlaylistDetailScreen(
                                 Spacer(Modifier.width(6.dp))
                                 Text("Shuffle")
                             }
+                            Spacer(Modifier.width(16.dp))
+                            val anyDownloading = playlist.tracks.any { downloadingTracks.containsKey(it.id) }
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(48.dp)) {
+                                if (anyDownloading) {
+                                    val downloadingList = playlist.tracks.filter { downloadingTracks.containsKey(it.id) }
+                                    val progressSum = downloadingList.mapNotNull { downloadingTracks[it.id] }.sum()
+                                    val overallProgress = if (downloadingList.isNotEmpty()) progressSum / downloadingList.size else 0f
+                                    CircularProgressIndicator(
+                                        progress = { overallProgress },
+                                        modifier = Modifier.fillMaxSize(),
+                                        strokeWidth = 2.dp
+                                    )
+                                    IconButton(onClick = {}) {
+                                        Icon(Icons.Rounded.Download, null, tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                } else {
+                                    IconButton(
+                                        onClick = {
+                                            playlist.tracks.forEach { track ->
+                                                playerViewModel.downloadTrack(track)
+                                            }
+                                        }
+                                    ) {
+                                        Icon(Icons.Rounded.Download, null)
+                                    }
+                                }
+                            }
                         }
 
                         Button(
@@ -213,9 +250,12 @@ fun PlaylistDetailScreen(
                     SpotifyStyleTrackItem(
                         index = index + 1,
                         track = track,
+                        isDownloading = downloadingTracks.containsKey(track.id),
+                        downloadProgress = downloadingTracks[track.id],
                         onClick = { playerViewModel.playTracks(playlist.tracks, index) },
                         onAddToQueue = { playerViewModel.addToQueue(track) },
-                        onDownload = { playerViewModel.downloadTrack(track) }
+                        onDownload = { playerViewModel.downloadTrack(track) },
+                        onRemove = { libraryViewModel.removeTrackFromPlaylist(playlistId, track.id) }
                     )
                 }
             }
@@ -227,11 +267,15 @@ fun PlaylistDetailScreen(
 fun SpotifyStyleTrackItem(
     index: Int,
     track: Track,
+    isDownloading: Boolean,
+    downloadProgress: Float?,
     onClick: () -> Unit,
     onAddToQueue: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    onRemove: (() -> Unit)? = null
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val isDownloaded = remember(track) { com.melodify.shared.data.storage.TrackDownloader.isDownloaded(track) }
 
     Row(
         modifier = Modifier
@@ -275,6 +319,23 @@ fun SpotifyStyleTrackItem(
             )
         }
 
+        if (isDownloading) {
+            CircularProgressIndicator(
+                progress = { downloadProgress ?: 0f },
+                modifier = Modifier.size(24.dp), 
+                strokeWidth = 2.dp
+            )
+            Spacer(Modifier.width(8.dp))
+        } else if (isDownloaded) {
+            Icon(
+                Icons.Rounded.CheckCircle,
+                contentDescription = "Downloaded",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+
         Box {
             IconButton(onClick = { showMenu = true }) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -290,6 +351,13 @@ fun SpotifyStyleTrackItem(
                     leadingIcon = { Icon(Icons.Rounded.Download, null) },
                     onClick = { onDownload(); showMenu = false }
                 )
+                if (onRemove != null) {
+                    DropdownMenuItem(
+                        text = { Text("Remove from Playlist") },
+                        leadingIcon = { Icon(Icons.Rounded.RemoveCircleOutline, null) },
+                        onClick = { onRemove(); showMenu = false }
+                    )
+                }
             }
         }
     }

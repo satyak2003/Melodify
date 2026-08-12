@@ -23,15 +23,27 @@ import com.melodify.shared.domain.model.RepeatMode
 import com.melodify.shared.domain.model.currentTrack
 import com.melodify.shared.domain.model.durationMs
 import com.melodify.shared.domain.model.isPlaying
+import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import com.melodify.shared.domain.model.positionMs
 import com.melodify.shared.domain.model.queue
 import com.melodify.shared.presentation.PlayerViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
 import com.melodify.shared.presentation.SleepOption
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.zIndex
+import com.melodify.shared.ui.components.rememberReorderableLazyListState
+
+import com.melodify.shared.presentation.LibraryViewModel
 
 @Composable
 fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
+    val libraryViewModel: LibraryViewModel = koinViewModel()
+    val libraryState by libraryViewModel.uiState.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
     val queue by playerViewModel.queue.collectAsState()
     val sleepOption by playerViewModel.sleepOption.collectAsState()
@@ -63,13 +75,26 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
         return
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(48.dp),
-        horizontalArrangement = Arrangement.spacedBy(48.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AsyncImage(
+            model = track.thumbnailUrl,
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(50.dp)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(48.dp),
+            horizontalArrangement = Arrangement.spacedBy(48.dp)
+        ) {
         // Left — album art + info + controls
         Column(
             modifier = Modifier.weight(1f),
@@ -164,24 +189,40 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                     Spacer(Modifier.height(16.dp))
 
                     // Track info
-                    Text(
-                        track.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        track.artistNames,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    track.album?.title?.let { album ->
-                        Text(
-                            album,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                track.title,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                track.artistNames,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            track.album?.title?.let { album ->
+                                Text(
+                                    album,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                        
+                        val isLiked = (libraryState as? com.melodify.shared.presentation.LibraryUiState.Success)
+                            ?.likedTracks?.any { it.id == track.id } == true
+                            
+                        IconButton(onClick = { libraryViewModel.toggleLike(track) }, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                contentDescription = "Like",
+                                tint = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -222,16 +263,27 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
             Spacer(Modifier.height(16.dp))
 
             // Playback controls
+            val coroutineScope = rememberCoroutineScope()
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = playerViewModel::toggleShuffle, modifier = Modifier.size(48.dp)) {
+                val shuffleScale = remember { androidx.compose.animation.core.Animatable(1f) }
+                IconButton(
+                    onClick = { 
+                        coroutineScope.launch { 
+                            shuffleScale.animateTo(0f, androidx.compose.animation.core.tween(150))
+                            playerViewModel.toggleShuffle()
+                            shuffleScale.animateTo(1f, androidx.compose.animation.core.tween(150))
+                        }
+                    }, 
+                    modifier = Modifier.size(48.dp)
+                ) {
                     Icon(
                         Icons.Rounded.Shuffle,
                         null,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(24.dp).scale(1f, shuffleScale.value),
                         tint = if (queue.isShuffleEnabled) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -267,14 +319,23 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                     )
                 }
 
-                IconButton(onClick = playerViewModel::cycleRepeatMode, modifier = Modifier.size(48.dp)) {
+                val repeatRotation = remember { androidx.compose.animation.core.Animatable(0f) }
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            repeatRotation.animateTo(repeatRotation.value + 360f, androidx.compose.animation.core.tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                            playerViewModel.cycleRepeatMode()
+                        }
+                    }, 
+                    modifier = Modifier.size(48.dp)
+                ) {
                     Icon(
                         when (queue.repeatMode) {
                             RepeatMode.ONE -> Icons.Rounded.RepeatOne
                             else -> Icons.Rounded.Repeat
                         },
                         null,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = repeatRotation.value },
                         tint = if (queue.repeatMode != RepeatMode.OFF) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -303,20 +364,35 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             } else {
+                val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
+                    playerViewModel.reorderQueue(from, to)
+                }
+
                 androidx.compose.foundation.lazy.LazyColumn(
+                    state = lazyListState,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(queue.tracks.size, key = { idx -> "${queue.tracks[idx].id}_$idx" }) { index ->
+                    items(queue.tracks.size, key = { idx -> queue.tracks[idx].id }) { index ->
                         val queueTrack = queue.tracks[index]
                         val isPlayingItem = index == queue.currentIndex
-                        var dragOffsetY by remember { mutableStateOf(0f) }
+                        val isDragging = reorderState.draggingItemIndex == index
+                        val scale by animateFloatAsState(targetValue = if (isDragging) 1.04f else 1.0f)
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (isPlayingItem) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                                     else MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    translationY = if (isDragging) reorderState.draggedDistance else 0f
+                                    scaleX = scale
+                                    scaleY = scale
+                                    shadowElevation = if (isDragging) 8.dp.toPx() else 0f
+                                }
+                                .zIndex(if (isDragging) 1f else 0f)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -330,21 +406,15 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier
                                         .padding(end = 8.dp)
-                                        .pointerInput(index) {
+                                        .pointerInput(queueTrack.id) {
                                             detectDragGestures(
+                                                onDragStart = { reorderState.onDragStart(index) },
                                                 onDrag = { change: PointerInputChange, dragAmount: Offset ->
                                                     change.consume()
-                                                    dragOffsetY += dragAmount.y
-                                                    if (dragOffsetY > 45f && index < queue.tracks.lastIndex) {
-                                                        playerViewModel.reorderQueue(index, index + 1)
-                                                        dragOffsetY = 0f
-                                                    } else if (dragOffsetY < -45f && index > 0) {
-                                                        playerViewModel.reorderQueue(index, index - 1)
-                                                        dragOffsetY = 0f
-                                                    }
+                                                    reorderState.onDrag(dragAmount)
                                                 },
-                                                onDragEnd = { dragOffsetY = 0f },
-                                                onDragCancel = { dragOffsetY = 0f }
+                                                onDragEnd = { reorderState.onDragInterrupted() },
+                                                onDragCancel = { reorderState.onDragInterrupted() }
                                             )
                                         }
                                 )
@@ -388,6 +458,7 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
             }
         }
     }
+}
 }
 
 fun formatDesktopDuration(ms: Long): String {

@@ -1,3 +1,5 @@
+@file:OptIn(UnstableApi::class)
+
 package com.melodify.shared.domain.player
 
 import android.content.Context
@@ -7,24 +9,71 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import android.os.PowerManager
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.melodify.shared.domain.model.Track
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 
+@OptIn(UnstableApi::class)
+object AudioCacheManager {
+    @Volatile
+    private var cache: SimpleCache? = null
+
+    fun getCache(context: Context): SimpleCache {
+        return cache ?: synchronized(this) {
+            cache ?: SimpleCache(
+                File(context.cacheDir, "media_cache"),
+                LeastRecentlyUsedCacheEvictor(200 * 1024 * 1024L),
+                StandaloneDatabaseProvider(context)
+            ).also { cache = it }
+        }
+    }
+}
+
+@OptIn(UnstableApi::class)
 actual class AudioPlayer(private val context: Context) {
+
+    private val cacheDataSourceFactory = CacheDataSource.Factory()
+        .setCache(AudioCacheManager.getCache(context))
+        .setUpstreamDataSourceFactory(
+            DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true))
+        )
+
+    private val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            25000, // minBufferMs
+            50000, // maxBufferMs
+            1500,  // bufferForPlaybackMs
+            3000   // bufferForPlaybackAfterRebufferMs
+        ).build()
+
     val player: ExoPlayer = ExoPlayer.Builder(context)
+        .setLoadControl(loadControl)
+        .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(cacheDataSourceFactory))
         .setAudioAttributes(AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build(), true)
+        .setWakeMode(C.WAKE_MODE_NETWORK)
         .setHandleAudioBecomingNoisy(true)
         .build()
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var positionJob: Job? = null
+    
+    private var transitionWakeLock: PowerManager.WakeLock? = null
 
     private val _isPlaying = MutableStateFlow(false)
     actual val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -45,8 +94,14 @@ actual class AudioPlayer(private val context: Context) {
     actual val hasMedia: StateFlow<Boolean> = _hasMedia.asStateFlow()
 
     actual var onTrackEnded: (() -> Unit)? = null
+    actual var onSkipNext: (() -> Unit)? = null
+    actual var onSkipPrevious: (() -> Unit)? = null
 
     init {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        transitionWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Melodify:TransitionWakeLock")
+        transitionWakeLock?.setReferenceCounted(false)
+
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
@@ -65,7 +120,10 @@ actual class AudioPlayer(private val context: Context) {
                     _positionMs.value = player.currentPosition.coerceAtLeast(0L)
                     _isPlaying.value = false
                     _hasMedia.value = false
-                    onTrackEnded?.invoke()
+                    if (player.playerError == null) {
+                        transitionWakeLock?.acquire(30000L)
+                        onTrackEnded?.invoke()
+                    }
                 }
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -75,7 +133,14 @@ actual class AudioPlayer(private val context: Context) {
         })
     }
 
-    actual fun play(url: String, track: Track) {
+    fun releaseTransitionWakeLock() {
+        if (transitionWakeLock?.isHeld == true) {
+            transitionWakeLock?.release()
+        }
+    }
+
+    actual fun play(url: String, track: Track, initialSeekMs: Long) {
+        releaseTransitionWakeLock()
         _playerError.value = null
         _hasMedia.value = true
         scope.launch(Dispatchers.Main) {
@@ -98,6 +163,10 @@ actual class AudioPlayer(private val context: Context) {
                 .build()
 
             player.setMediaItem(mediaItem)
+            if (initialSeekMs > 0) {
+                player.seekTo(initialSeekMs)
+                _positionMs.value = initialSeekMs
+            }
             player.prepare()
             player.play()
         }
@@ -130,3 +199,4 @@ actual class AudioPlayer(private val context: Context) {
         }
     }
 }
+

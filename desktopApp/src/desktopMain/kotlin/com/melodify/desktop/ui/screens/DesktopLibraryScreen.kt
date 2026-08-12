@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
 import coil3.compose.AsyncImage
 import com.melodify.shared.data.storage.TrackDownloader
+import com.melodify.shared.data.storage.AuthManager
 import com.melodify.shared.domain.model.Playlist
 import com.melodify.shared.domain.model.Track
 import com.melodify.shared.domain.model.currentTrack
@@ -31,6 +33,7 @@ import com.melodify.shared.presentation.ImportProgress
 import com.melodify.shared.presentation.LibraryUiState
 import com.melodify.shared.presentation.LibraryViewModel
 import com.melodify.shared.presentation.PlayerViewModel
+import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -41,7 +44,9 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
     val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
     val downloadingTracks by playerViewModel.downloadingTracks.collectAsState()
+    val isOffline by com.melodify.shared.utils.NetworkMonitor.isOffline.collectAsState()
     val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
 
     var showImportLinkDialog by remember { mutableStateOf(false) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
@@ -115,6 +120,34 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
         )
     }
 
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
+
+    if (showDeleteDialog && playlistToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Playlist") },
+            text = { Text("Are you sure you want to delete '${playlistToDelete?.title}'? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        playlistToDelete?.let {
+                            viewModel.deletePlaylist(it.id)
+                            if (selectedPlaylist?.id == it.id) {
+                                selectedPlaylist = null
+                            }
+                        }
+                        showDeleteDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         // ── Left column: Playlist list (320dp) ─────────────────────────────
@@ -178,22 +211,9 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-
-                        // Logout Button
-                        IconButton(
-                            onClick = { viewModel.logoutSpotify() },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Rounded.Logout,
-                                contentDescription = "Logout Spotify",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.error
-                            )
                         }
                     }
                 }
-            }
 
             Spacer(Modifier.height(8.dp))
 
@@ -265,6 +285,27 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
                         fontWeight = FontWeight.SemiBold
                     )
                 }
+            }
+
+            // Sync YouTube Music button
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    scope.launch {
+                        val tokens = AuthManager.loginWithGoogle()
+                        viewModel.importYouTubePlaylists(tokens?.accessToken)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            ) {
+                Icon(Icons.Rounded.VideoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Sync YouTube Music", fontWeight = FontWeight.Bold)
             }
 
             // Import progress
@@ -455,14 +496,19 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 playlist = playlist,
                 currentTrack = playerState.currentTrack,
-                localPlaylists = localPlaylists,
+                isOffline = isOffline,
+                allPlaylists = localPlaylists + ((uiState as? LibraryUiState.Success)?.spotifyPlaylists ?: emptyList()),
                 downloadingTracks = downloadingTracks,
                 onPlayAll = { playerViewModel.playTracks(playlist.tracks, 0) },
                 onPlayTrack = { index -> playerViewModel.playTracks(playlist.tracks, index) },
                 onDownloadTrack = playerViewModel::downloadTrack,
                 onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                 onAddToPlaylist = viewModel::addTrackToPlaylist,
-                onRemoveFromPlaylist = { trackId -> viewModel.removeTrackFromPlaylist(playlist.id, trackId) }
+                onRemoveFromPlaylist = { trackId -> viewModel.removeTrackFromPlaylist(playlist.id, trackId) },
+                onDeletePlaylist = {
+                    playlistToDelete = playlist
+                    showDeleteDialog = true
+                }
             )
         }
     }
@@ -538,14 +584,16 @@ private fun TrackListPanel(
     modifier: Modifier = Modifier,
     playlist: Playlist,
     currentTrack: Track?,
-    localPlaylists: List<Playlist>,
-    downloadingTracks: Set<String>,
+    isOffline: Boolean,
+    allPlaylists: List<Playlist>,
+    downloadingTracks: Map<String, Float>,
     onPlayAll: () -> Unit,
     onPlayTrack: (Int) -> Unit,
     onDownloadTrack: (Track) -> Unit,
     onAddToQueue: (Track) -> Unit,
     onAddToPlaylist: (String, Track) -> Unit,
-    onRemoveFromPlaylist: (String) -> Unit
+    onRemoveFromPlaylist: (String) -> Unit,
+    onDeletePlaylist: () -> Unit
 ) {
     val listState = rememberLazyListState()
 
@@ -600,8 +648,16 @@ private fun TrackListPanel(
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
+                val totalSeconds = playlist.tracks.sumOf { it.durationSeconds }
+                val hours = totalSeconds / 3600
+                val minutes = (totalSeconds % 3600) / 60
+                val durationString = buildString {
+                    if (hours > 0) append("$hours hr ")
+                    append("$minutes min")
+                }
+
                 Text(
-                    "${playlist.tracks.size} songs",
+                    "${playlist.tracks.size} songs • $durationString",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
@@ -609,6 +665,31 @@ private fun TrackListPanel(
             }
 
             Spacer(Modifier.width(16.dp))
+
+            val anyDownloading = playlist.tracks.any { downloadingTracks.containsKey(it.id) }
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
+                if (anyDownloading) {
+                    val downloadingList = playlist.tracks.filter { downloadingTracks.containsKey(it.id) }
+                    val progressSum = downloadingList.mapNotNull { downloadingTracks[it.id] }.sum()
+                    val overallProgress = if (downloadingList.isNotEmpty()) progressSum / downloadingList.size else 0f
+                    CircularProgressIndicator(
+                        progress = { overallProgress },
+                        modifier = Modifier.fillMaxSize(),
+                        strokeWidth = 2.dp
+                    )
+                    IconButton(onClick = {}) {
+                        Icon(Icons.Rounded.Download, contentDescription = "Downloading", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    }
+                } else {
+                    IconButton(
+                        onClick = { playlist.tracks.forEach { onDownloadTrack(it) } }
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = "Download All", modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+            
+            Spacer(Modifier.width(8.dp))
 
             // Play all button
             FilledIconButton(
@@ -619,6 +700,21 @@ private fun TrackListPanel(
                 )
             ) {
                 Icon(Icons.Rounded.PlayArrow, contentDescription = "Play All", modifier = Modifier.size(32.dp))
+            }
+            
+            if (playlist.id.startsWith("local_")) {
+                Spacer(Modifier.width(8.dp))
+                IconButton(
+                    onClick = onDeletePlaylist,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Delete, 
+                        contentDescription = "Delete Playlist", 
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
 
@@ -689,9 +785,11 @@ private fun TrackListPanel(
                         index = index + 1,
                         track = track,
                         isPlaying = isCurrentlyPlaying,
-                        isDownloading = downloadingTracks.contains(track.id),
+                        isDownloading = downloadingTracks.containsKey(track.id),
+                        downloadProgress = downloadingTracks[track.id],
                         isCustomPlaylist = playlist.id.startsWith("local_"),
-                        localPlaylists = localPlaylists,
+                        isOffline = isOffline,
+                        allPlaylists = allPlaylists,
                         onClick = { onPlayTrack(index) },
                         onDownload = { onDownloadTrack(track) },
                         onAddToQueue = { onAddToQueue(track) },
@@ -712,8 +810,10 @@ private fun TrackRow(
     track: Track,
     isPlaying: Boolean,
     isDownloading: Boolean,
+    downloadProgress: Float?,
     isCustomPlaylist: Boolean,
-    localPlaylists: List<Playlist>,
+    isOffline: Boolean,
+    allPlaylists: List<Playlist>,
     onClick: () -> Unit,
     onDownload: () -> Unit,
     onAddToQueue: () -> Unit,
@@ -725,6 +825,9 @@ private fun TrackRow(
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val isDownloaded = remember(track) { TrackDownloader.isDownloaded(track) }
     var showMenu by remember { mutableStateOf(false) }
+    
+    val isAvailable = isDownloaded || !isOffline
+    val rowAlpha = if (isAvailable) 1f else 0.4f
 
     Row(
         modifier = Modifier
@@ -734,8 +837,9 @@ private fun TrackRow(
                 if (isPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                 else MaterialTheme.colorScheme.surface
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .clickable(enabled = isAvailable, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .alpha(rowAlpha),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Index / playing indicator
@@ -813,7 +917,11 @@ private fun TrackRow(
         // Actions
         Row(modifier = Modifier.width(72.dp), horizontalArrangement = Arrangement.End) {
             if (isDownloading) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    progress = { downloadProgress ?: 0f },
+                    modifier = Modifier.size(18.dp), 
+                    strokeWidth = 2.dp
+                )
             } else if (isDownloaded) {
                 Icon(
                     Icons.Rounded.CheckCircle,
@@ -874,7 +982,7 @@ private fun TrackRow(
                         )
                     }
 
-                    if (localPlaylists.isNotEmpty()) {
+                    if (allPlaylists.isNotEmpty()) {
                         HorizontalDivider()
                         Text(
                             "Add to Playlist:",
@@ -882,7 +990,7 @@ private fun TrackRow(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
-                        localPlaylists.forEach { pl ->
+                        allPlaylists.forEach { pl ->
                             DropdownMenuItem(
                                 text = { Text(pl.title) },
                                 leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },

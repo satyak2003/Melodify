@@ -17,10 +17,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.Color
 import coil3.compose.AsyncImage
 import com.melodify.shared.domain.model.Playlist
 import com.melodify.shared.domain.model.Track
@@ -101,8 +106,9 @@ fun DesktopHomeScreen(
                                     Text(
                                         text = "Welcome to Melodify",
                                         style = MaterialTheme.typography.headlineLarge,
+                                        fontFamily = FontFamily.Default,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                     Spacer(Modifier.height(4.dp))
                                     Text(
@@ -110,6 +116,23 @@ fun DesktopHomeScreen(
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                                     )
+                                }
+                                
+                                val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsState()
+                                if (sleepRemainingMs != null) {
+                                    val remainingSec = sleepRemainingMs!! / 1000
+                                    val text = "Sleep Timer: %d:%02d".format(remainingSec / 60, remainingSec % 60)
+                                    Row(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(text, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                             }
                         }
@@ -119,36 +142,25 @@ fun DesktopHomeScreen(
                     // Hero Row: Surprise Me & Continue Listening
                     item {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Card(
-                                modifier = Modifier.weight(1f).height(90.dp).clickable {
-                                    if (state.trending.isNotEmpty()) {
-                                        playerViewModel.playTracks(state.trending.shuffled(), 0)
+                            DesktopSurpriseMeHeroButton(
+                                modifier = Modifier.weight(1f).height(90.dp),
+                                onSurprise = {
+                                    val tracks = if (state.recommendedTracks.isNotEmpty()) {
+                                        state.recommendedTracks.shuffled()
+                                    } else {
+                                        state.trending.shuffled()
                                     }
-                                },
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                            ) {
-                                Row(modifier = Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(44.dp)) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
-                                        }
+                                    if (tracks.isNotEmpty()) {
+                                        playerViewModel.playTracks(tracks, 0)
                                     }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text("Surprise Me!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                        Text("Play a random song", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
-                                    }
-                                    Icon(Icons.Rounded.PlayArrow, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                                 }
-                            }
+                            )
 
                             val lastTrack = state.lastPlayedTrack
                             if (lastTrack != null) {
                                 Card(
                                     modifier = Modifier.weight(1f).height(90.dp).clickable {
-                                        playerViewModel.playTrack(lastTrack)
-                                        if (state.lastPlayedPositionMs > 0) playerViewModel.seekTo(state.lastPlayedPositionMs)
+                                        playerViewModel.playTrack(lastTrack, state.lastPlayedPositionMs)
                                     },
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -235,7 +247,7 @@ fun DesktopMusicTimelineChart(stats: Map<String, Int>) {
                 Spacer(Modifier.width(8.dp))
                 Text("Music Timeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
-                Text("Minutes Listened", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Listening Time", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(16.dp))
             val maxVal = (stats.values.maxOrNull() ?: 60).coerceAtLeast(1)
@@ -251,7 +263,14 @@ fun DesktopMusicTimelineChart(stats: Map<String, Int>) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("${minutes}m", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val timeStr = if (minutes >= 60) {
+                            val hrs = minutes / 60
+                            val mins = minutes % 60
+                            if (mins > 0) "${hrs}h${mins}m" else "${hrs}h"
+                        } else {
+                            "${minutes}m"
+                        }
+                        Text(timeStr, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         Box(
                             modifier = Modifier.height(65.dp).fillMaxWidth(),
@@ -399,7 +418,7 @@ fun DesktopTrackCard(
 @Composable
 fun DesktopTrackListItem(
     track: Track,
-    localPlaylists: List<Playlist> = emptyList(),
+    allPlaylists: List<Playlist> = emptyList(),
     onClick: () -> Unit,
     onAddToQueue: () -> Unit = {},
     onDownload: () -> Unit = {},
@@ -438,14 +457,14 @@ fun DesktopTrackListItem(
                     leadingIcon = { Icon(Icons.Rounded.Download, null) },
                     onClick = { onDownload(); showMenu = false }
                 )
-                if (localPlaylists.isNotEmpty()) {
+                if (allPlaylists.isNotEmpty()) {
                     DropdownMenuItem(
                         text = { Text("Add to Playlist") },
                         leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },
                         onClick = { showPlaylistSubmenu = !showPlaylistSubmenu }
                     )
                     if (showPlaylistSubmenu) {
-                        localPlaylists.forEach { playlist ->
+                        allPlaylists.forEach { playlist ->
                             DropdownMenuItem(
                                 text = { Text("  ${playlist.title}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 onClick = { onAddToPlaylist(playlist.id); showMenu = false; showPlaylistSubmenu = false }
@@ -453,6 +472,85 @@ fun DesktopTrackListItem(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun DesktopSurpriseMeHeroButton(modifier: Modifier = Modifier, onSurprise: () -> Unit) {
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        )
+    )
+
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition()
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.3f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(1500, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        )
+    )
+    val shimmerOffset by infiniteTransition.animateFloat(
+        initialValue = -200f,
+        targetValue = 1000f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(2500, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        )
+    )
+
+    Card(
+        modifier = modifier.scale(scale).clickable(
+            interactionSource = interactionSource, 
+            indication = androidx.compose.material3.ripple()
+        ) { onSurprise() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Shimmer background
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.3f),
+                                Color.Transparent
+                            ),
+                            start = androidx.compose.ui.geometry.Offset(shimmerOffset, shimmerOffset),
+                            end = androidx.compose.ui.geometry.Offset(shimmerOffset + 200f, shimmerOffset + 200f)
+                        )
+                    )
+            )
+
+            Row(modifier = Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(44.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Rounded.AutoAwesome, 
+                            contentDescription = null, 
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.scale(pulse)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Surprise Me!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Play a random song", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+                }
+                Icon(Icons.Rounded.PlayArrow, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
             }
         }
     }

@@ -33,7 +33,7 @@ kotlin {
                 implementation(compose.foundation)
                 implementation(compose.material3)
                 implementation(compose.ui)
-                implementation(compose.components.resources)
+                api(compose.components.resources)
                 implementation(compose.components.uiToolingPreview)
 
                 // Coroutines
@@ -63,6 +63,9 @@ kotlin {
 
                 // Lifecycle ViewModel (KMP)
                 implementation(libs.androidx.lifecycle.viewmodel)
+
+                // Lottie Compose (Compottie)
+                api(libs.compottie)
             }
         }
 
@@ -85,6 +88,13 @@ kotlin {
 
                 // DataStore
                 implementation(libs.datastore.preferences)
+
+                // Google Sign In
+                implementation(libs.play.services.auth)
+
+                // Firebase Auth
+                implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+                implementation("com.google.firebase:firebase-auth-ktx")
             }
         }
 

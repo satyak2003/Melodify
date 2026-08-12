@@ -10,6 +10,9 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -21,15 +24,18 @@ object TrackDownloader {
             return dir
         }
 
+    private fun targetFileFor(track: Track): File = File(downloadsDir, "${track.id}.m4a")
+    private fun partialFileFor(track: Track): File = File(downloadsDir, "${track.id}.m4a.part")
+
     fun isDownloaded(track: Track): Boolean {
         if (track.localPath != null && File(track.localPath).exists()) return true
-        val targetFile = File(downloadsDir, "${track.id}.m4a")
+        val targetFile = targetFileFor(track)
         return targetFile.exists() && targetFile.length() > 0
     }
 
     fun getDownloadedPath(track: Track): String? {
         if (track.localPath != null && File(track.localPath).exists()) return track.localPath
-        val targetFile = File(downloadsDir, "${track.id}.m4a")
+        val targetFile = targetFileFor(track)
         return if (targetFile.exists()) targetFile.absolutePath else null
     }
 
@@ -39,36 +45,86 @@ object TrackDownloader {
         onProgress: (Float) -> Unit = {}
     ): Result<Track> = withContext(Dispatchers.IO) {
         runCatching {
-            val targetFile = File(downloadsDir, "${track.id}.m4a")
+            val targetFile = targetFileFor(track)
             if (targetFile.exists() && targetFile.length() > 0) {
                 return@runCatching track.copy(localPath = targetFile.absolutePath)
             }
 
-            val videoId = track.youtubeVideoId ?: track.id
-            val streamUrl = musicRepository.getStreamUrl(videoId).getOrThrow()
+            val partialFile = partialFileFor(track)
 
-            val conn = URL(streamUrl).openConnection()
+            var activeTrack = track
+            val videoId = track.youtubeVideoId ?: track.id
+            val streamUrl = try {
+                musicRepository.getStreamUrl(videoId).getOrThrow()
+            } catch (e: Exception) {
+                val matched = musicRepository.matchSpotifyTrack(track.title, track.artistNames, track.durationMs).getOrThrow()
+                activeTrack = track.copy(
+                    youtubeVideoId = matched.youtubeVideoId ?: matched.id,
+                    thumbnailUrl = track.thumbnailUrl ?: matched.thumbnailUrl
+                )
+                musicRepository.getStreamUrl(activeTrack.youtubeVideoId ?: activeTrack.id).getOrThrow()
+            }
+
+            val conn = URL(streamUrl).openConnection() as HttpURLConnection
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 30_000
+
+            // Resume from existing partial file if the server supports ranges
+            val existingBytes = if (partialFile.exists()) partialFile.length() else 0L
+            if (existingBytes > 0) {
+                conn.setRequestProperty("Range", "bytes=$existingBytes-")
+            }
             conn.connect()
 
-            val totalBytes = conn.contentLengthLong
-            var downloadedBytes = 0L
+            val responseCode = conn.responseCode
+            val didResume = existingBytes > 0 && responseCode == HttpURLConnection.HTTP_PARTIAL
+            val startOffset = if (didResume) existingBytes else 0L
+            val totalBytes = when (responseCode) {
+                HttpURLConnection.HTTP_OK -> conn.contentLengthLong
+                HttpURLConnection.HTTP_PARTIAL -> if (conn.contentLengthLong >= 0) conn.contentLengthLong + startOffset else -1L
+                else -> throw IOException("Server returned HTTP $responseCode for ${track.title}")
+            }
 
-            conn.getInputStream().use { input ->
-                targetFile.outputStream().use { output ->
+            // If the server ignored the Range header, restart from scratch
+            if (existingBytes > 0 && !didResume) {
+                partialFile.delete()
+            }
+
+            val inputStream = conn.getInputStream()
+            val outputStream = FileOutputStream(partialFile, didResume)
+            inputStream.use { input ->
+                outputStream.use { output ->
                     val buffer = ByteArray(16384)
-                    var read: Int
-                    while (input.read(buffer).also { read = it } != -1) {
+                    var downloadedBytes = startOffset
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
                         output.write(buffer, 0, read)
                         downloadedBytes += read
                         if (totalBytes > 0) {
                             onProgress(downloadedBytes.toFloat() / totalBytes.toFloat())
                         }
                     }
+                    output.flush()
                 }
             }
 
-            track.copy(localPath = targetFile.absolutePath)
+            // Atomic-ish publish: rename .part to final name only after a complete write
+            if (!partialFile.renameTo(targetFile)) {
+                partialFile.copyTo(targetFile, overwrite = true)
+                partialFile.delete()
+            }
+
+            if (!targetFile.exists() || targetFile.length() == 0L) {
+                partialFile.delete()
+                throw IOException("Download produced an empty file for ${track.title}")
+            }
+
+            activeTrack.copy(localPath = targetFile.absolutePath)
+        }.onFailure { e ->
+            println("TrackDownloader error for track ${track.id}: ${e.message}")
+            e.printStackTrace()
         }
     }
 
@@ -96,8 +152,11 @@ object TrackDownloader {
 
     fun deleteDownloadedTrack(track: Track): Boolean {
         try {
-            val file = File(downloadsDir, "${track.id}.m4a")
-            if (file.exists()) return file.delete()
+            val file = targetFileFor(track)
+            if (file.exists()) file.delete()
+            val partial = partialFileFor(track)
+            if (partial.exists()) partial.delete()
+            return !file.exists() && !partial.exists()
         } catch (ignored: Exception) {}
         return false
     }

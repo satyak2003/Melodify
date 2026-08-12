@@ -4,7 +4,7 @@ import android.content.Context
 import java.io.File
 
 actual object AppStorage {
-    private var applicationContext: Context? = null
+    internal var applicationContext: Context? = null
 
     fun init(context: Context) {
         applicationContext = context.applicationContext

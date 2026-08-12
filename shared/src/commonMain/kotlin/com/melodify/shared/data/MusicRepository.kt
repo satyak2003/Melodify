@@ -8,6 +8,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import com.melodify.shared.domain.model.YouTubePlaylist
+import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import com.melodify.shared.data.storage.YouTubeAuthManager
 
 class MusicRepository(
     private val innerTubeApi: InnerTubeApi,
@@ -55,6 +65,56 @@ class MusicRepository(
         withContext(Dispatchers.IO) {
             val response = innerTubeApi.getRelatedSongs(videoId, playlistId)
             innerTubeParser.parseNextResults(response)
+        }
+    }
+    
+    suspend fun fetchUserPlaylists(accessToken: String? = null): Result<List<YouTubePlaylist>> = runCatching {
+        withContext(Dispatchers.IO) {
+            // First try InnerTube API if YouTube cookies are available (works for YouTube Music)
+            if (YouTubeAuthManager.getCookieHeader() != null) {
+                try {
+                    return@withContext innerTubeApi.getUserPlaylists()
+                } catch (e: Exception) {
+                    println("InnerTube getUserPlaylists failed, falling back to YouTube Data API: ${e.message}")
+                }
+            }
+            
+            // Fallback to YouTube Data API v3 if OAuth token provided
+            if (accessToken != null && accessToken.isNotBlank()) {
+                val client = HttpClient()
+                val playlists = mutableListOf<YouTubePlaylist>()
+                var nextPageToken: String? = null
+                
+                do {
+                    val url = buildString {
+                        append("https://www.googleapis.com/youtube/v3/playlists?mine=true&part=snippet&maxResults=50")
+                        if (nextPageToken != null) append("&pageToken=$nextPageToken")
+                    }
+                    
+                    val response = client.get(url) {
+                        header("Authorization", "Bearer $accessToken")
+                        header("Accept", "application/json")
+                    }
+                    val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(response.bodyAsText()).jsonObject
+                    val items = json["items"]?.jsonArray ?: emptyList()
+                    
+                    val pagePlaylists = items.mapNotNull { item ->
+                        val id = item.jsonObject["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                        val snippet = item.jsonObject["snippet"]?.jsonObject
+                        val title = snippet?.get("title")?.jsonPrimitive?.content ?: ""
+                        val thumbnailUrl = snippet?.get("thumbnails")?.jsonObject?.get("medium")?.jsonObject?.get("url")?.jsonPrimitive?.content
+                            ?: snippet?.get("thumbnails")?.jsonObject?.get("default")?.jsonObject?.get("url")?.jsonPrimitive?.content ?: ""
+                        YouTubePlaylist(id, title, thumbnailUrl)
+                    }
+                    playlists.addAll(pagePlaylists)
+                    nextPageToken = json["nextPageToken"]?.jsonPrimitive?.content
+                } while (nextPageToken != null)
+                
+                client.close()
+                playlists
+            } else {
+                throw Exception("No authentication available for fetching YouTube playlists. Please sign in with Google or provide YouTube cookies.")
+            }
         }
     }
 

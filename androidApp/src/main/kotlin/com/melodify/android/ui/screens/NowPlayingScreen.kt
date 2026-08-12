@@ -30,11 +30,33 @@ import com.melodify.shared.domain.model.currentTrack
 import com.melodify.shared.domain.model.durationMs
 import com.melodify.shared.domain.model.isPlaying
 import com.melodify.shared.domain.model.positionMs
+import androidx.compose.ui.zIndex
 import com.melodify.shared.presentation.PlayerViewModel
 import com.melodify.shared.presentation.SleepOption
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import com.melodify.shared.ui.components.rememberReorderableLazyListState
+import com.melodify.shared.ui.modifiers.bounceClick
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
-fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
+fun NowPlayingContent(
+    playerViewModel: PlayerViewModel,
+    onBack: () -> Unit
+) {
+    val libraryViewModel: com.melodify.shared.presentation.LibraryViewModel = koinViewModel()
+    val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
     val playerState by playerViewModel.playerState.collectAsStateWithLifecycle()
     val queue by playerViewModel.queue.collectAsStateWithLifecycle()
     val sleepOption by playerViewModel.sleepOption.collectAsStateWithLifecycle()
@@ -44,7 +66,7 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
 
     if (track == null) {
         Box(
-            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            modifier = Modifier.fillMaxSize()
         ) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -64,13 +86,14 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
         return
     }
 
+    val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        playerViewModel.reorderQueue(from, to)
+    }
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
-                MaterialTheme.colorScheme.background
-            ))
-        ),
+        state = lazyListState,
+        modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp)
     ) {
         item {
@@ -81,8 +104,8 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 // Top bar with Sleep Timer
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onBackground) }
-                    Text("Now Playing", Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                    IconButton(onClick = onBack) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = androidx.compose.ui.graphics.Color.White) }
+                    Text("Now Playing", Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color.White)
                     
                     Box {
                         IconButton(onClick = { showSleepTimerMenu = true }) {
@@ -132,9 +155,23 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                         // Track info
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onBackground)
-                                Text(track.artistNames, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = androidx.compose.ui.graphics.Color.White)
+                                Text(track.artistNames, style = MaterialTheme.typography.bodyLarge, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
                             }
+                            
+                            val isLiked = (libraryState as? com.melodify.shared.presentation.LibraryUiState.Success)
+                                ?.likedTracks?.any { it.id == track.id } == true
+                                
+                            IconButton(onClick = { libraryViewModel.toggleLike(track) }) {
+                                Icon(
+                                    if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                    contentDescription = "Like",
+                                    tint = if (isLiked) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.White
+                                )
+                            }
+                            
+                            Spacer(Modifier.width(8.dp))
+                            
                             if (track.isFlac) {
                                 Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                                     Text("FLAC", Modifier.padding(8.dp, 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -162,54 +199,79 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                     colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatDuration(position), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(formatDuration(duration), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(formatDuration(position), style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
+                    Text(formatDuration(duration), style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
                 }
 
                 Spacer(Modifier.height(16.dp))
 
                 // Playback Controls
+                val coroutineScope = rememberCoroutineScope()
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = playerViewModel::toggleShuffle) {
+                    val shuffleScale = remember { Animatable(1f) }
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            shuffleScale.animateTo(0f, animationSpec = tween(150))
+                            playerViewModel.toggleShuffle()
+                            shuffleScale.animateTo(1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                        }
+                    }) {
                         Icon(
                             Icons.Rounded.Shuffle,
                             contentDescription = "Shuffle",
-                            tint = if (queue.isShuffleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (queue.isShuffleEnabled) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = shuffleScale.value
+                                scaleY = shuffleScale.value
+                            }
                         )
                     }
-                    IconButton(onClick = playerViewModel::playPrevious, modifier = Modifier.size(56.dp)) {
+                    Box(Modifier.bounceClick(scaleDown = 0.8f) { playerViewModel.playPrevious() }.padding(12.dp)) {
                         Icon(
                             Icons.Rounded.SkipPrevious,
                             contentDescription = "Previous Track",
                             modifier = Modifier.size(36.dp),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = androidx.compose.ui.graphics.Color.White
                         )
                     }
-                    FilledIconButton(
-                        onClick = playerViewModel::togglePlayPause,
-                        modifier = Modifier.size(64.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Icon(
-                            if (playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (playerState.isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(38.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
+                    Box(Modifier.bounceClick(scaleDown = 0.8f) { playerViewModel.togglePlayPause() }) {
+                        Surface(
+                            modifier = Modifier.size(64.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (playerState.isPlaying) "Pause" else "Play",
+                                    modifier = Modifier.size(38.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
                     }
-                    IconButton(onClick = playerViewModel::playNext, modifier = Modifier.size(56.dp)) {
+                    Box(Modifier.bounceClick(scaleDown = 0.8f) { playerViewModel.playNext() }.padding(12.dp)) {
                         Icon(
                             Icons.Rounded.SkipNext,
                             contentDescription = "Next Track",
                             modifier = Modifier.size(36.dp),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = androidx.compose.ui.graphics.Color.White
                         )
                     }
-                    IconButton(onClick = { playerViewModel.cycleRepeatMode() }) {
+                    val repeatRotation = remember { Animatable(0f) }
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            repeatRotation.animateTo(
+                                targetValue = repeatRotation.value + 360f,
+                                animationSpec = tween(400, easing = FastOutSlowInEasing)
+                            )
+                        }
+                        playerViewModel.cycleRepeatMode()
+                    }) {
                         Icon(
                             when (queue.repeatMode) {
                                 RepeatMode.OFF -> Icons.Rounded.Repeat
@@ -217,7 +279,10 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                                 RepeatMode.ALL -> Icons.Rounded.Repeat
                             },
                             contentDescription = "Repeat Mode",
-                            tint = if (queue.repeatMode != RepeatMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (queue.repeatMode != RepeatMode.OFF) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.graphicsLayer {
+                                rotationZ = repeatRotation.value
+                            }
                         )
                     }
                 }
@@ -233,7 +298,7 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                     Icon(
                         Icons.Rounded.VolumeMute,
                         contentDescription = "Volume Mute",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(20.dp)
                     )
                     Slider(
@@ -251,7 +316,7 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                     Icon(
                         Icons.Rounded.VolumeUp,
                         contentDescription = "Volume Up",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -265,40 +330,36 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                     "Up Next (${queue.tracks.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    color = androidx.compose.ui.graphics.Color.White,
                     modifier = Modifier.padding(start = 24.dp, top = 24.dp, bottom = 8.dp)
                 )
             }
 
-            itemsIndexed(queue.tracks, key = { idx, item -> "${item.id}_$idx" }) { index, qTrack ->
+            itemsIndexed(queue.tracks, key = { _, item -> item.id }) { index, qTrack ->
                 val isCurrent = index == queue.currentIndex
-                var dragOffsetY by remember { mutableStateOf(0f) }
+                val isDragging = reorderState.draggingItemIndex == index
+                val scale by animateFloatAsState(targetValue = if (isDragging) 1.04f else 1.0f)
 
                 ListItem(
-                    headlineContent = { Text(qTrack.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal, color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground) },
-                    supportingContent = { Text(qTrack.artistNames, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    headlineContent = { Text(qTrack.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal, color = if (isCurrent) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.White) },
+                    supportingContent = { Text(qTrack.artistNames, maxLines = 1, overflow = TextOverflow.Ellipsis, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f)) },
                     leadingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Rounded.DragHandle,
                                 contentDescription = "Drag to reorder",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f),
                                 modifier = Modifier
                                     .padding(end = 8.dp)
-                                    .pointerInput(index) {
+                                    .pointerInput(qTrack.id) {
                                         detectDragGestures(
+                                            onDragStart = { reorderState.onDragStart(index) },
                                             onDrag = { change: PointerInputChange, dragAmount: Offset ->
                                                 change.consume()
-                                                dragOffsetY += dragAmount.y
-                                                if (dragOffsetY > 50f && index < queue.tracks.lastIndex) {
-                                                    playerViewModel.reorderQueue(index, index + 1)
-                                                    dragOffsetY = 0f
-                                                } else if (dragOffsetY < -50f && index > 0) {
-                                                    playerViewModel.reorderQueue(index, index - 1)
-                                                    dragOffsetY = 0f
-                                                }
+                                                reorderState.onDrag(dragAmount)
                                             },
-                                            onDragEnd = { dragOffsetY = 0f },
-                                            onDragCancel = { dragOffsetY = 0f }
+                                            onDragEnd = { reorderState.onDragInterrupted() },
+                                            onDragCancel = { reorderState.onDragInterrupted() }
                                         )
                                     }
                             )
@@ -307,14 +368,22 @@ fun NowPlayingScreen(playerViewModel: PlayerViewModel, onBack: () -> Unit) {
                     },
                     trailingContent = {
                         IconButton(onClick = { playerViewModel.removeFromQueue(index) }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Rounded.Close, contentDescription = "Remove", tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f))
                         }
                     },
                     modifier = Modifier
                         .padding(horizontal = 16.dp, vertical = 2.dp)
+                        .graphicsLayer {
+                            translationY = if (isDragging) reorderState.draggedDistance else 0f
+                            scaleX = scale
+                            scaleY = scale
+                            shadowElevation = if (isDragging) 12.dp.toPx() else 0f
+                        }
+                        .zIndex(if (isDragging) 1f else 0f)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                        .clickable { playerViewModel.skipToIndex(index) }
+                        .background(if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else androidx.compose.ui.graphics.Color(0x22FFFFFF))
+                        .clickable { playerViewModel.skipToIndex(index) },
+                    colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                 )
             }
         }

@@ -52,7 +52,7 @@ val sharedModule = module {
     single { MusicRepository(get(), InnerTubeParser) }
 
     // ViewModels
-    viewModel { PlayerViewModel(get(), get(), get()) }
+    viewModel { PlayerViewModel(get(), get(), get(), get()) }
     viewModel { SearchViewModel(get()) }
     viewModel { HomeViewModel(get()) }
     viewModel { LibraryViewModel(get(), get()) }

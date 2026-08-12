@@ -182,7 +182,15 @@ data class SectionListRenderer(
 data class SectionListContent(
     val musicShelfRenderer: MusicShelfRenderer? = null,
     val musicCardShelfRenderer: MusicCardShelfRenderer? = null,
-    val itemSectionRenderer: ItemSectionRenderer? = null
+    val itemSectionRenderer: ItemSectionRenderer? = null,
+    val musicPlaylistShelfRenderer: MusicPlaylistShelfRenderer? = null,
+    val musicTwoRowItemRenderer: MusicTwoRowItemRenderer? = null
+)
+
+@Serializable
+data class MusicPlaylistShelfRenderer(
+    val playlistId: String? = null,
+    val contents: List<MusicShelfContent>? = null
 )
 
 @Serializable
@@ -193,7 +201,8 @@ data class ItemSectionRenderer(
 @Serializable
 data class ItemSectionContent(
     val musicShelfRenderer: MusicShelfRenderer? = null,
-    val musicResponsiveListItemRenderer: MusicResponsiveListItemRenderer? = null
+    val musicResponsiveListItemRenderer: MusicResponsiveListItemRenderer? = null,
+    val musicTwoRowItemRenderer: MusicTwoRowItemRenderer? = null
 )
 
 @Serializable
@@ -283,4 +292,12 @@ data class WatchEndpoint(
 @Serializable
 data class BrowseEndpoint(
     val browseId: String? = null
+)
+
+@Serializable
+data class MusicTwoRowItemRenderer(
+    val navigationEndpoint: NavigationEndpoint? = null,
+    val title: Runs? = null,
+    val subtitle: Runs? = null,
+    val thumbnail: MusicThumbnailRendererContainer? = null
 )

@@ -40,9 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.melodify.android.R
 import java.io.File
+import androidx.activity.compose.BackHandler
 
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     val downloadDir = File(context.filesDir, ".melodify/downloads").absolutePath

@@ -13,7 +13,7 @@ data class Paging<T>(
 )
 
 @Serializable
-data class SpotifyPlaylistsResponse(val items: List<SpotifyPlaylist>)
+data class SpotifyPlaylistsResponse(val items: List<SpotifyPlaylist?>)
 
 @Serializable
 data class SpotifyPlaylist(
@@ -28,7 +28,7 @@ data class SpotifyPlaylist(
 @Serializable
 data class SpotifyTracksInfo(
     val total: Int = 0,
-    val items: List<SpotifyPlaylistItem> = emptyList()
+    val items: List<SpotifyPlaylistItem?> = emptyList()
 )
 
 @Serializable
@@ -40,7 +40,7 @@ data class SpotifyImage(
 
 @Serializable
 data class SpotifyPlaylistTracksResponse(
-    val items: List<SpotifyPlaylistItem> = emptyList(),
+    val items: List<SpotifyPlaylistItem?> = emptyList(),
     val total: Int = 0,
     val next: String? = null
 )
@@ -58,26 +58,26 @@ data class SpotifyPlaylistItem(
 
 @Serializable
 data class SpotifyTrack(
-    val id: String = "",
-    val name: String = "Unknown Track",
-    val artists: List<SpotifyArtist> = emptyList(),
+    val id: String? = null,
+    val name: String? = null,
+    val artists: List<SpotifyArtist?>? = emptyList(),
     val album: SpotifyAlbum? = null,
-    @SerialName("duration_ms") val durationMs: Long = 0,
-    val explicit: Boolean = false,
-    val popularity: Int = 0
+    @SerialName("duration_ms") val durationMs: Long? = 0,
+    val explicit: Boolean? = false,
+    val popularity: Int? = 0
 )
 
 @Serializable
 data class SpotifyArtist(
-    val id: String = "", 
-    val name: String = "Unknown Artist"
+    val id: String? = null, 
+    val name: String? = null
 )
 
 @Serializable
 data class SpotifyAlbum(
-    val id: String = "",
-    val name: String = "Unknown Album",
-    val images: List<SpotifyImage> = emptyList(),
+    val id: String? = null,
+    val name: String? = null,
+    val images: List<SpotifyImage?>? = emptyList(),
     @SerialName("release_date") val releaseDate: String? = null
 )
 
@@ -95,5 +95,5 @@ data class SpotifyUser(
     val id: String,
     @SerialName("display_name") val displayName: String? = null,
     val email: String? = null,
-    val images: List<SpotifyImage> = emptyList()
+    val images: List<SpotifyImage?> = emptyList()
 )

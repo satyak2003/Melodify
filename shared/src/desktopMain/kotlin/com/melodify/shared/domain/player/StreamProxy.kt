@@ -1,40 +1,103 @@
 package com.melodify.shared.domain.player
 
-import kotlinx.coroutines.*
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.isSuccess
+import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.IOException
+import java.net.InetSocketAddress
 import java.net.ServerSocket
-import java.net.URL
+import java.net.Socket
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 object StreamProxy {
+    private const val PROXY_HOST = "127.0.0.1"
+    private const val BUFFER_SIZE = 32768
+    private const val CONNECT_TIMEOUT_MS = 15_000L
+    private const val REQUEST_TIMEOUT_MS = 30_000L
+    private const val MAX_CONCURRENT_STREAMS = 10
+
+    private data class ProxyRequest(
+        val method: String,
+        val targetUrl: String,
+        val rangeHeader: String?,
+        val isHead: Boolean
+    )
+
     private var serverSocket: ServerSocket? = null
     private var proxyPort = 0
-    private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isStarted = false
+    private var acceptThread: Thread? = null
+    private val activeConnections = AtomicInteger(0)
+    private val shutdown = AtomicBoolean(false)
+
+    // HTTP Client for upstream connections with connection pooling
+    private val httpClient = HttpClient(CIO) {
+        install(HttpTimeout) {
+            connectTimeoutMillis = CONNECT_TIMEOUT_MS
+            requestTimeoutMillis = REQUEST_TIMEOUT_MS
+        }
+        engine {
+            maxConnectionsCount = MAX_CONCURRENT_STREAMS
+        }
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _stats = MutableStateFlow(StreamProxyStats(0, 0, 0))
+    val stats: StateFlow<StreamProxyStats> = _stats.asStateFlow()
+
+    data class StreamProxyStats(
+        val activeStreams: Int,
+        val totalBytesProxied: Long,
+        val totalRequests: Int
+    )
 
     fun start(): Int {
-        if (isStarted && proxyPort > 0 && serverSocket?.isClosed == false) return proxyPort
+        if (isRunning()) return proxyPort
+
+        shutdown.set(false)
+        activeConnections.set(0)
+
         try {
-            val server = ServerSocket(0) // Bind to free local port
+            val server = ServerSocket()
+            server.reuseAddress = true
+            server.bind(InetSocketAddress(PROXY_HOST, 0))
             serverSocket = server
             proxyPort = server.localPort
             isStarted = true
 
-            scope.launch {
-                while (isActive && !server.isClosed) {
-                    try {
-                        val client = server.accept()
-                        launch { handleClient(client) }
-                    } catch (e: Exception) {
-                        if (server.isClosed) break
-                    }
-                }
+            acceptThread = Thread { acceptLoop(server) }.apply {
+                isDaemon = true
+                name = "StreamProxy-Accept"
+                start()
             }
+
+            println("StreamProxy started on port $proxyPort")
         } catch (e: Exception) {
             println("StreamProxy start error: ${e.message}")
+            isStarted = false
         }
         return proxyPort
     }
@@ -42,121 +105,149 @@ object StreamProxy {
     fun getProxyUrl(targetUrl: String): String {
         val port = start()
         val encoded = URLEncoder.encode(targetUrl, "UTF-8")
-        return "http://127.0.0.1:$port/stream.m4a?url=$encoded"
+        return "http://$PROXY_HOST:$port/stream.m4a?url=$encoded"
     }
 
-    private suspend fun handleClient(socket: java.net.Socket) = withContext(Dispatchers.IO) {
+    private fun isRunning(): Boolean {
+        val socket = serverSocket
+        return isStarted && socket != null && !socket.isClosed && proxyPort > 0
+    }
+
+    private fun acceptLoop(server: ServerSocket) {
+        while (!shutdown.get() && !server.isClosed) {
+            try {
+                val client = server.accept()
+                if (activeConnections.get() >= MAX_CONCURRENT_STREAMS) {
+                    try { client.close() } catch (ignored: Exception) {}
+                    continue
+                }
+
+                activeConnections.incrementAndGet()
+                scope.launch { handleClient(client) }
+            } catch (e: Exception) {
+                if (!shutdown.get() && !server.isClosed) {
+                    println("Accept error: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private suspend fun handleClient(socket: Socket) = withContext(Dispatchers.IO) {
         try {
-            socket.soTimeout = 30000
-            val input = socket.getInputStream()
-            val reader = BufferedReader(InputStreamReader(input))
-            val requestLine = reader.readLine() ?: return@withContext
+            // Read request
+            val request = readRequest(socket) ?: return@withContext
 
-            val parts = requestLine.split(" ")
-            if (parts.size < 2 || (!parts[0].equals("GET", ignoreCase = true) && !parts[0].equals("HEAD", ignoreCase = true))) {
-                socket.close()
-                return@withContext
+            // Parse target URL from query
+            val urlQuery = request.targetUrl.substringAfter("url=", "")
+            if (urlQuery.isEmpty()) return@withContext
+
+            val decodedUrl = URLDecoder.decode(urlQuery, "UTF-8")
+
+            // Forward request upstream
+            val upstreamResponse = httpClient.get(decodedUrl) {
+                header(HttpHeaders.UserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                header(HttpHeaders.Accept, "*/*")
+                request.rangeHeader?.let { header(HttpHeaders.Range, it) }
             }
 
-            val isHead = parts[0].equals("HEAD", ignoreCase = true)
-            val path = parts[1]
-            val urlQuery = path.substringAfter("url=", "")
-            if (urlQuery.isEmpty()) {
-                socket.close()
-                return@withContext
+            val statusCode = upstreamResponse.status
+            val contentLength = upstreamResponse.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+            val contentType = upstreamResponse.headers[HttpHeaders.ContentType] ?: "audio/mp4"
+            val contentRange = upstreamResponse.headers[HttpHeaders.ContentRange]
+            val acceptRanges = upstreamResponse.headers[HttpHeaders.AcceptRanges] ?: "bytes"
+
+            // Send response headers
+            val responseStatus = when {
+                statusCode == HttpStatusCode.PartialContent -> "HTTP/1.1 206 Partial Content\r\n"
+                statusCode == HttpStatusCode.OK -> "HTTP/1.1 200 OK\r\n"
+                else -> "HTTP/1.1 ${statusCode.value} ${statusCode.description}\r\n"
             }
 
-            val targetUrl = URLDecoder.decode(urlQuery, "UTF-8")
+            val headers = buildString {
+                append(responseStatus)
+                append("Content-Type: $contentType\r\n")
+                append("Accept-Ranges: $acceptRanges\r\n")
+                contentLength?.let { append("Content-Length: $it\r\n") }
+                contentRange?.let { append("Content-Range: $it\r\n") }
+                append("Connection: close\r\n")
+                append("\r\n")
+            }
 
-            var rangeHeader: String? = null
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                if (line.isNullOrBlank()) break
-                if (line!!.startsWith("Range:", ignoreCase = true)) {
-                    rangeHeader = line!!.substringAfter("Range:").trim()
+            val output = BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE)
+            output.write(headers.toByteArray(Charsets.UTF_8))
+            output.flush()
+
+            if (!request.isHead && statusCode.isSuccess()) {
+                var totalBytes = 0L
+                val channel = upstreamResponse.bodyAsChannel()
+                val buffer = ByteArray(BUFFER_SIZE)
+                while (true) {
+                    if (shutdown.get()) break
+                    val read = channel.readAvailable(buffer, 0, buffer.size)
+                    if (read == -1) break
+                    if (read == 0) continue
+                    output.write(buffer, 0, read)
+                    totalBytes += read
+                }
+                output.flush()
+                _stats.update {
+                    it.copy(
+                        totalBytesProxied = it.totalBytesProxied + totalBytes,
+                        totalRequests = it.totalRequests + 1
+                    )
                 }
             }
 
-            var currentUrl = targetUrl
-            var connection: HttpURLConnection
-            var responseCode: Int
-            var redirects = 0
-
-            while (true) {
-                connection = URL(currentUrl).openConnection() as HttpURLConnection
-                connection.requestMethod = if (isHead) "HEAD" else "GET"
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-                connection.instanceFollowRedirects = true
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-                if (rangeHeader != null) {
-                    connection.setRequestProperty("Range", rangeHeader)
-                }
-
-                responseCode = connection.responseCode
-                if (responseCode in listOf(301, 302, 303, 307, 308) && redirects < 5) {
-                    val loc = connection.getHeaderField("Location")
-                    if (!loc.isNullOrBlank()) {
-                        currentUrl = loc
-                        redirects++
-                        continue
-                    }
-                }
-                break
-            }
-
-            val contentLength = connection.contentLengthLong
-            val out = socket.getOutputStream()
-
-            val statusLine = when (responseCode) {
-                206 -> "HTTP/1.1 206 Partial Content\r\n"
-                200 -> "HTTP/1.1 200 OK\r\n"
-                else -> "HTTP/1.1 $responseCode OK\r\n"
-            }
-
-            val remoteContentType = connection.contentType?.takeIf { it.isNotBlank() } ?: "audio/mp4"
-            var headers = statusLine +
-                    "Content-Type: $remoteContentType\r\n" +
-                    "Accept-Ranges: bytes\r\n"
-
-            if (contentLength > 0) {
-                headers += "Content-Length: $contentLength\r\n"
-            }
-            val contentRange = connection.getHeaderField("Content-Range")
-            if (contentRange != null) {
-                headers += "Content-Range: $contentRange\r\n"
-            }
-            headers += "Connection: close\r\n\r\n"
-
-            out.write(headers.toByteArray())
-            out.flush()
-
-            if (!isHead && responseCode in 200..299) {
-                val inputStream = try { connection.inputStream } catch (e: Exception) { null }
-                inputStream?.use { inStream ->
-                    val buffer = ByteArray(32768)
-                    var bytesRead: Int
-                    while (inStream.read(buffer).also { bytesRead = it } != -1) {
-                        try {
-                            out.write(buffer, 0, bytesRead)
-                            out.flush()
-                        } catch (e: Exception) {
-                            // Client closed connection (normal when seeking or probing stream header)
-                            break
-                        }
-                    }
-                }
-            }
-            socket.close()
         } catch (e: Exception) {
+            if (e !is CancellationException && e !is IOException) {
+                println("StreamProxy client error: ${e.message}")
+            }
+        } finally {
             try { socket.close() } catch (ignored: Exception) {}
+            activeConnections.decrementAndGet()
+            _stats.update { it.copy(activeStreams = activeConnections.get()) }
+        }
+    }
+
+    private fun readRequest(socket: Socket): ProxyRequest? {
+        val input = BufferedInputStream(socket.getInputStream(), BUFFER_SIZE)
+        val buffer = ByteArray(BUFFER_SIZE)
+        val sb = StringBuilder()
+
+        while (true) {
+            val n = input.read(buffer)
+            if (n <= 0) return null
+            sb.append(String(buffer, 0, n, Charsets.US_ASCII))
+
+            val endIdx = sb.indexOf("\r\n\r\n")
+            if (endIdx >= 0) {
+                val head = sb.substring(0, endIdx)
+                val lines = head.split("\r\n")
+                if (lines.isEmpty()) return null
+
+                val requestLine = lines[0].split(" ")
+                if (requestLine.size < 2) return null
+
+                val method = requestLine[0].uppercase()
+                var rangeHeader: String? = null
+                lines.forEach { line ->
+                    if (line.startsWith("Range:", ignoreCase = true)) {
+                        rangeHeader = line.substringAfter("Range:").trim()
+                    }
+                }
+
+                return ProxyRequest(method, requestLine[1], rangeHeader, method == "HEAD")
+            }
         }
     }
 
     fun stop() {
-        isStarted = false
-        scope.cancel()
+        shutdown.set(true)
         try { serverSocket?.close() } catch (ignored: Exception) {}
+        scope.cancel()
+        try { httpClient.close() } catch (ignored: Exception) {}
+        isStarted = false
+        proxyPort = 0
+        println("StreamProxy stopped")
     }
 }

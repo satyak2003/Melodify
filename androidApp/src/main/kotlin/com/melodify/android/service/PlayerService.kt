@@ -2,6 +2,7 @@ package com.melodify.android.service
 
 import android.content.Intent
 import androidx.media3.common.Player
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.melodify.shared.domain.player.AudioPlayer
@@ -14,7 +15,37 @@ class PlayerService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val player = audioPlayer.player
-        mediaSession = MediaSession.Builder(this, player)
+        val forwardingPlayer = object : ForwardingPlayer(player) {
+            override fun getAvailableCommands(): Player.Commands {
+                return super.getAvailableCommands().buildUpon()
+                    .add(Player.COMMAND_SEEK_TO_NEXT)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .build()
+            }
+
+            override fun hasNextMediaItem(): Boolean = true
+            override fun hasPreviousMediaItem(): Boolean = true
+
+            override fun seekToNext() {
+                audioPlayer.onSkipNext?.invoke()
+            }
+
+            override fun seekToPrevious() {
+                audioPlayer.onSkipPrevious?.invoke()
+            }
+            
+            override fun seekToNextMediaItem() {
+                audioPlayer.onSkipNext?.invoke()
+            }
+            
+            override fun seekToPreviousMediaItem() {
+                audioPlayer.onSkipPrevious?.invoke()
+            }
+        }
+
+        mediaSession = MediaSession.Builder(this, forwardingPlayer)
             .setCallback(MelodifySessionCallback())
             .build()
 
@@ -52,6 +83,11 @@ class PlayerService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Keep service alive when swiped from recents
+    }
 
     override fun onDestroy() {
         mediaSession?.release()

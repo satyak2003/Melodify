@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Media3 ExoPlayer APIs are marked @UnstableApi; the code opts in via Kotlin @OptIn,
+         which the lint checker does not recognize for this KMP module. -->
+    <issue id="UnsafeOptInUsageError">
+        <ignore path="src/androidMain/kotlin/com/melodify/shared/domain/player/AudioPlayer.kt" />
+    </issue>
+</lint>

@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
+    id("com.google.gms.google-services") version "4.4.1"
 }
 
 android {
@@ -28,6 +29,10 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+
+    androidResources {
+        noCompress.add("json")
     }
 
     compileOptions {
@@ -62,6 +67,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
+    // Lottie
+    implementation(libs.compottie)
+    implementation("com.airbnb.android:lottie-compose:6.4.1")
+
     // Koin
     implementation(libs.koin.android)
     implementation(libs.koin.compose)
@@ -85,6 +94,11 @@ dependencies {
     // Image loading
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-ktor3:3.0.4")
+
+    // Firebase & Auth
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 }
 
 

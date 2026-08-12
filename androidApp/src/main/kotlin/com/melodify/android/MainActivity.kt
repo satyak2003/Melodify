@@ -15,11 +15,26 @@ import org.koin.android.ext.android.inject
 import android.content.pm.PackageManager
 import android.os.Build
 
+import androidx.activity.result.contract.ActivityResultContracts
+import com.melodify.shared.data.storage.AuthManager
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import android.content.ComponentName
+import com.google.common.util.concurrent.ListenableFuture
+import com.melodify.android.service.PlayerService
+
 class MainActivity : ComponentActivity() {
     private val libraryViewModel: LibraryViewModel by inject()
+    private var controllerFuture: ListenableFuture<MediaController>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        val googleSignInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            AuthManager.handleSignInResult(result.data)
+        }
+        AuthManager.setActivity(this, googleSignInLauncher)
+        
         enableEdgeToEdge()
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -36,6 +51,17 @@ class MainActivity : ComponentActivity() {
                 MelodifyApp()
             }
         }
+    }
+    
+    override fun onStart() {
+        super.onStart()
+        val sessionToken = SessionToken(this, ComponentName(this, PlayerService::class.java))
+        controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        controllerFuture?.let { MediaController.releaseFuture(it) }
     }
     
     override fun onNewIntent(intent: Intent) {
