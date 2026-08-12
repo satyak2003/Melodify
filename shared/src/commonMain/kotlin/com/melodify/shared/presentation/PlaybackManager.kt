@@ -35,8 +35,10 @@ class PlaybackManager(
     private var prefetchedUrl: String? = null
     private var prefetchedTrackId: String? = null
 
-    fun playTrack(track: Track, initialSeekMs: Long = 0L) {
-        consecutiveFailures = 0
+    fun playTrack(track: Track, initialSeekMs: Long = 0L, isAuto: Boolean = false) {
+        if (!isAuto) {
+            consecutiveFailures = 0
+        }
         startPlayingTrack(track, initialSeekMs)
     }
 

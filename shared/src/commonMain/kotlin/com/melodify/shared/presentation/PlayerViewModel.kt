@@ -52,7 +52,7 @@ class PlayerViewModel(
         onPlaybackError = { error, track ->
             _playerState.value = PlayerState.Error(error, track)
         },
-        onTrackEnded = { playNext() },
+        onTrackEnded = { playNext(isAuto = true) },
         onBuffering = { track ->
             track?.let { _playerState.value = PlayerState.Buffering(it) }
         },
@@ -119,7 +119,7 @@ class PlayerViewModel(
 
     private fun setupAudioPlayerCallbacks() {
         audioPlayer.onTrackEnded = {
-            viewModelScope.launch { playNext() }
+            viewModelScope.launch { playNext(isAuto = true) }
         }
         audioPlayer.onSkipNext = {
             viewModelScope.launch { playNext() }
@@ -233,7 +233,7 @@ class PlayerViewModel(
     fun moveQueueItemUp(index: Int) = queueManager.moveQueueItemUp(index)
     fun moveQueueItemDown(index: Int) = queueManager.moveQueueItemDown(index)
 
-    fun playNext() {
+    fun playNext(isAuto: Boolean = false) {
         if (sleepTimerManager.sleepOption.value == SleepOption.END_OF_TRACK) {
             audioPlayer.pause()
             sleepTimerManager.setSleepTimer(SleepOption.OFF)
@@ -249,7 +249,7 @@ class PlayerViewModel(
             ) }
         )
         queueManager.setQueue(nextQueue)
-        nextQueue.currentTrack?.let { playbackManager.playTrack(it) }
+        nextQueue.currentTrack?.let { playbackManager.playTrack(it, isAuto = isAuto) }
     }
 
     fun playPrevious() {
