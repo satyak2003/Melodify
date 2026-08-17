@@ -26,7 +26,7 @@ import com.melodify.shared.domain.model.currentTrack
 import com.melodify.shared.presentation.PlayerViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
-enum class DesktopScreen { HOME, SEARCH, LIBRARY, NOW_PLAYING, PROFILE, SETTINGS, ABOUT }
+enum class DesktopScreen { HOME, SEARCH, LIBRARY, NOW_PLAYING, PROFILE, SETTINGS, ABOUT, DOWNLOADS }
 
 @Composable
 fun MelodifyDesktopApp() {
@@ -75,6 +75,7 @@ fun MelodifyDesktopApp() {
                         DesktopScreen.SEARCH -> DesktopSearchScreen(playerViewModel)
                         DesktopScreen.LIBRARY -> DesktopLibraryScreen(playerViewModel)
                         DesktopScreen.NOW_PLAYING -> DesktopNowPlayingScreen(playerViewModel)
+                        DesktopScreen.DOWNLOADS -> DesktopDownloadsScreen()
                         DesktopScreen.PROFILE -> DesktopProfileScreen()
                         DesktopScreen.SETTINGS -> DesktopSettingsScreen()
                         DesktopScreen.ABOUT -> DesktopAboutScreen()
@@ -189,6 +190,11 @@ fun DesktopSidebar(
             label = "Profile",
             selected = currentScreen == DesktopScreen.PROFILE
         ) { onNavigate(DesktopScreen.PROFILE) }
+        SidebarNavItem(
+            icon = Icons.Rounded.Download,
+            label = "Downloads",
+            selected = currentScreen == DesktopScreen.DOWNLOADS
+        ) { onNavigate(DesktopScreen.DOWNLOADS) }
         SidebarNavItem(
             icon = Icons.Rounded.Settings,
             label = "Settings",

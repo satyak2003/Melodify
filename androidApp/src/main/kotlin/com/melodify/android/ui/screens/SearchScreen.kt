@@ -207,6 +207,7 @@ fun SearchEmptyState(onQuerySelect: (String) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackListItem(
     track: Track,
@@ -243,45 +244,19 @@ fun TrackListItem(
                     IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Rounded.MoreVert, contentDescription = "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Add to Queue") },
-                            leadingIcon = { Icon(Icons.Rounded.Queue, null) },
-                            onClick = {
-                                onAddToQueue?.invoke()
-                                showMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Download Track") },
-                            leadingIcon = { Icon(Icons.Rounded.Download, null) },
-                            onClick = {
-                                onDownload?.invoke()
-                                showMenu = false
-                            }
-                        )
-                        if (allPlaylists.isNotEmpty()) {
-                            androidx.compose.material3.HorizontalDivider()
-                            Text(
-                                "Add to Playlist:",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                            allPlaylists.forEach { pl ->
-                                DropdownMenuItem(
-                                    text = { Text(pl.title) },
-                                    leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },
-                                    onClick = {
-                                        onAddToPlaylist?.invoke(pl.id)
-                                        showMenu = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
     )
+
+    if (showMenu) {
+        com.melodify.android.ui.components.TrackOptionsBottomSheet(
+            track = track,
+            onDismissRequest = { showMenu = false },
+            onAddToQueue = { onAddToQueue?.invoke() },
+            onDownload = { onDownload?.invoke() },
+            allPlaylists = allPlaylists,
+            onAddToPlaylist = onAddToPlaylist
+        )
+    }
 }

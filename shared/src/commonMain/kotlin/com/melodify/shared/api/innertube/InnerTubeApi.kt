@@ -65,6 +65,18 @@ class InnerTubeApi(private val httpClient: HttpClient) {
         }.body()
     }
 
+    suspend fun searchVideo(query: String): SearchResponse {
+        val request = InnerTubeRequest(
+            context = buildContext(useWeb = true),
+            query = query
+        )
+        return httpClient.post("https://www.youtube.com/youtubei/v1/search") {
+            parameter("key", InnerTubeConstants.API_KEY)
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
     suspend fun getPlayerInfo(videoId: String): PlayerResponse {
         val vData = getVisitorData()
 
@@ -77,7 +89,7 @@ class InnerTubeApi(private val httpClient: HttpClient) {
             val response = httpClient.post("${InnerTubeConstants.BASE_URL}player") {
                 parameter("key", InnerTubeConstants.API_KEY)
                 contentType(ContentType.Application.Json)
-                applyAuth()
+                // DO NOT applyAuth() here!
                 setBody(webRequest)
             }.body<PlayerResponse>()
 
@@ -96,7 +108,8 @@ class InnerTubeApi(private val httpClient: HttpClient) {
         return httpClient.post("${InnerTubeConstants.BASE_URL}player") {
             parameter("key", InnerTubeConstants.API_KEY)
             contentType(ContentType.Application.Json)
-            applyAuth()
+            // DO NOT applyAuth() here! YouTube strictly rejects ANDROID_VR client streams 
+            // if they contain web login cookies (HTTP 400/403). Fetching anonymously works.
             setBody(androidRequest)
         }.body()
     }
@@ -154,6 +167,20 @@ class InnerTubeApi(private val httpClient: HttpClient) {
         }.body()
     }
 
+    suspend fun getYouTubePlaylistContinuation(continuationToken: String): BrowseResponse {
+        val request = InnerTubeRequest(
+            context = buildContext(isAndroid = false),
+            continuation = continuationToken
+        )
+        return httpClient.post("${InnerTubeConstants.BASE_URL}browse") {
+            parameter("key", InnerTubeConstants.API_KEY)
+            parameter("continuation", continuationToken)
+            contentType(ContentType.Application.Json)
+            applyAuth()
+            setBody(request)
+        }.body()
+    }
+
     suspend fun getRelatedSongs(videoId: String, playlistId: String?): NextResponse {
         val request = InnerTubeRequest(
             context = buildContext(isAndroid = false),
@@ -200,8 +227,12 @@ class InnerTubeApi(private val httpClient: HttpClient) {
         return playlists
     }
 
-    private fun buildContext(isAndroid: Boolean = false, visitorData: String? = null): InnerTubeContext {
-        val clientData = if (isAndroid) InnerTubeConstants.ANDROID_VR_CLIENT else InnerTubeConstants.WEB_REMIX_CLIENT
+    private fun buildContext(isAndroid: Boolean = false, visitorData: String? = null, useWeb: Boolean = false): InnerTubeContext {
+        val clientData = when {
+            isAndroid -> InnerTubeConstants.ANDROID_VR_CLIENT
+            useWeb -> InnerTubeConstants.WEB_CLIENT
+            else -> InnerTubeConstants.WEB_REMIX_CLIENT
+        }
         return InnerTubeContext(
             client = InnerTubeClient(
                 clientName = clientData["clientName"] as String,

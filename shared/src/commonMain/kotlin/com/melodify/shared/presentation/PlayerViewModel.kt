@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 
 class PlayerViewModel(
     private val musicRepository: MusicRepository,
@@ -76,7 +78,13 @@ class PlayerViewModel(
     private val _lyrics = MutableStateFlow<Lyrics?>(null)
     val lyrics: StateFlow<Lyrics?> = _lyrics.asStateFlow()
 
-    val downloadingTracks: StateFlow<Map<String, Float>> = downloadManager.downloadingTracks
+    val downloadingTracks: StateFlow<Map<String, Float>> = com.melodify.shared.domain.download.DownloadQueueManager.downloads
+        .map { list ->
+            list.filter { it.state is com.melodify.shared.domain.download.DownloadState.Downloading || it.state is com.melodify.shared.domain.download.DownloadState.Queued }
+                .associate { it.track.id to (if (it.state is com.melodify.shared.domain.download.DownloadState.Downloading) it.state.progress else 0f) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     val sleepOption: StateFlow<SleepOption> = sleepTimerManager.sleepOption
     val sleepRemainingMs: StateFlow<Long?> = sleepTimerManager.sleepRemainingMs
 
@@ -97,6 +105,9 @@ class PlayerViewModel(
 
         // Sync Listening Room
         observeSyncSession()
+
+        // Start Download Worker
+        com.melodify.shared.domain.download.DownloadWorker.start(musicRepository)
     }
 
     private fun restoreLastPlayed() {
@@ -150,10 +161,21 @@ class PlayerViewModel(
             }
         }
         
-        // Observe play/pause changes for sync
+        // Observe play/pause changes for sync and UI state
         viewModelScope.launch {
             audioPlayer.isPlaying.collect { playing ->
                 val current = queueManager.queue.value.currentTrack
+                
+                // Update UI State
+                if (current != null && audioPlayer.hasMedia.value) {
+                    if (playing) {
+                        _playerState.value = PlayerState.Playing(current, audioPlayer.positionMs.value, audioPlayer.durationMs.value, queueManager.queue.value)
+                    } else if (playerState.value !is PlayerState.Error) {
+                        _playerState.value = PlayerState.Paused(current, audioPlayer.positionMs.value, audioPlayer.durationMs.value, queueManager.queue.value)
+                    }
+                }
+
+                // Sync session
                 if (com.melodify.shared.domain.sync.SyncSessionManager.isHost.value) {
                     com.melodify.shared.domain.sync.SyncSessionManager.updateHostState(current, audioPlayer.positionMs.value, playing)
                 }
@@ -201,7 +223,9 @@ class PlayerViewModel(
 
     // ── Public API ──────────────────────────────────────────────────────────
 
-    fun downloadTrack(track: Track) = downloadManager.downloadTrack(track)
+    fun downloadTrack(track: Track, quality: com.melodify.shared.domain.download.DownloadQuality = com.melodify.shared.domain.download.DownloadQuality.NORMAL) {
+        com.melodify.shared.domain.download.DownloadQueueManager.enqueue(track, quality)
+    }
 
     // Sleep Timer
     fun setSleepTimer(option: SleepOption) = sleepTimerManager.setSleepTimer(option)

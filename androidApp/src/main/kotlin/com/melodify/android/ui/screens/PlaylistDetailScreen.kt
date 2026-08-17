@@ -79,7 +79,7 @@ fun PlaylistDetailScreen(
 
     val playlist: Playlist? = when (val state = uiState) {
         is LibraryUiState.Success -> {
-            (state.spotifyPlaylists + state.localPlaylists).firstOrNull { it.id == playlistId }
+            (state.spotifyPlaylists + state.localPlaylists + state.youtubePlaylists).firstOrNull { it.id == playlistId }
         }
         else -> null
     }
@@ -263,6 +263,7 @@ fun PlaylistDetailScreen(
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SpotifyStyleTrackItem(
     index: Int,
@@ -336,29 +337,18 @@ fun SpotifyStyleTrackItem(
             Spacer(Modifier.width(8.dp))
         }
 
-        Box {
-            IconButton(onClick = { showMenu = true }) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text("Add to Queue") },
-                    leadingIcon = { Icon(Icons.Rounded.QueueMusic, null) },
-                    onClick = { onAddToQueue(); showMenu = false }
-                )
-                DropdownMenuItem(
-                    text = { Text("Download Track") },
-                    leadingIcon = { Icon(Icons.Rounded.Download, null) },
-                    onClick = { onDownload(); showMenu = false }
-                )
-                if (onRemove != null) {
-                    DropdownMenuItem(
-                        text = { Text("Remove from Playlist") },
-                        leadingIcon = { Icon(Icons.Rounded.RemoveCircleOutline, null) },
-                        onClick = { onRemove(); showMenu = false }
-                    )
-                }
-            }
+        IconButton(onClick = { showMenu = true }) {
+            Icon(Icons.Rounded.MoreVert, contentDescription = "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+
+    if (showMenu) {
+        com.melodify.android.ui.components.TrackOptionsBottomSheet(
+            track = track,
+            onDismissRequest = { showMenu = false },
+            onAddToQueue = { onAddToQueue() },
+            onDownload = { onDownload() },
+            onRemoveFromPlaylist = onRemove
+        )
     }
 }

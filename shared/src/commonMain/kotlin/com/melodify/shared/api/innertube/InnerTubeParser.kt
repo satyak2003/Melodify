@@ -1,5 +1,6 @@
 package com.melodify.shared.api.innertube
 
+
 import com.melodify.shared.domain.model.Artist
 import com.melodify.shared.domain.model.SearchResult
 import com.melodify.shared.domain.model.Track
@@ -38,6 +39,25 @@ object InnerTubeParser {
                 itemSectionContent.musicTwoRowItemRenderer?.let { renderer ->
                     parseTrackFromTwoRowRenderer(renderer)?.let { track -> tracks.add(track) }
                 }
+                // or a normal video renderer!
+                itemSectionContent.videoRenderer?.let { renderer ->
+                    val videoId = renderer.videoId
+                    val title = renderer.title?.runs?.firstOrNull()?.text
+                    val author = renderer.ownerText?.runs?.firstOrNull()?.text ?: "Unknown Artist"
+                    val thumbUrl = renderer.thumbnail?.thumbnails?.maxByOrNull { it.width ?: 0 }?.url
+                    if (videoId != null && title != null) {
+                        tracks.add(Track(
+                            id = videoId,
+                            title = title,
+                            artists = listOf(Artist(id = author, name = author, thumbnailUrl = null)),
+                            album = null,
+                            thumbnailUrl = thumbUrl ?: "",
+                            durationMs = 200000L, // Dummy duration since searchVideo doesn't give precise ms easily
+                            youtubeVideoId = videoId,
+                            source = TrackSource.YOUTUBE
+                        ))
+                    }
+                }
             }
             
             // 3. Top result card (musicCardShelfRenderer)
@@ -67,35 +87,51 @@ object InnerTubeParser {
         return SearchResult(tracks = dedupeTracks(tracks))
     }
 
-    fun parseBrowseResults(response: BrowseResponse): List<Track> {
+    fun parseBrowseResults(response: BrowseResponse): BrowseResult {
         val tracks = mutableListOf<Track>()
-        val sectionListContents = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents
-        
-        sectionListContents?.forEach { sectionContent ->
-            // Standard music shelf (home feed, search results)
-            sectionContent.musicShelfRenderer?.contents?.forEach { shelfContent ->
-                shelfContent.musicResponsiveListItemRenderer?.let { renderer ->
-                    parseTrackFromRenderer(renderer)?.let { track ->
-                        tracks.add(track)
-                    }
-                }
-            }
-            // Playlist shelf (YT Music playlists use this renderer)
-            sectionContent.musicPlaylistShelfRenderer?.contents?.forEach { shelfContent ->
-                shelfContent.musicResponsiveListItemRenderer?.let { renderer ->
-                    parseTrackFromRenderer(renderer)?.let { track ->
-                        tracks.add(track)
-                    }
-                }
-            }
-            // Two-row grid renderer
-            sectionContent.musicTwoRowItemRenderer?.let { renderer ->
-                parseTrackFromTwoRowRenderer(renderer)?.let { track ->
-                    tracks.add(track)
-                }
+        var continuationToken: String? = null
+
+        fun parseShelfContent(content: MusicShelfContent) {
+            content.musicResponsiveListItemRenderer?.let { renderer ->
+                parseTrackFromRenderer(renderer)?.let { track -> tracks.add(track) }
             }
         }
-        return dedupeTracks(tracks)
+
+        fun parseSectionContent(sectionContent: SectionListContent) {
+            sectionContent.musicShelfRenderer?.let { shelf ->
+                shelf.contents?.forEach { parseShelfContent(it) }
+                if (continuationToken == null) continuationToken = shelf.continuations?.firstOrNull()?.nextContinuationData?.continuation
+            }
+            sectionContent.musicPlaylistShelfRenderer?.let { shelf ->
+                shelf.contents?.forEach { parseShelfContent(it) }
+                if (continuationToken == null) continuationToken = shelf.continuations?.firstOrNull()?.nextContinuationData?.continuation
+            }
+            sectionContent.musicTwoRowItemRenderer?.let { renderer ->
+                parseTrackFromTwoRowRenderer(renderer)?.let { track -> tracks.add(track) }
+            }
+        }
+
+        // Parse initial response
+        val sectionListRenderer = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer
+            ?: response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
+            
+        sectionListRenderer?.contents?.forEach { parseSectionContent(it) }
+        if (continuationToken == null) {
+            continuationToken = sectionListRenderer?.continuations?.firstOrNull()?.nextContinuationData?.continuation
+        }
+
+        // Parse continuation response
+        response.continuationContents?.musicPlaylistShelfContinuation?.let { continuation ->
+            continuation.contents?.forEach { parseShelfContent(it) }
+            if (continuationToken == null) continuationToken = continuation.continuations?.firstOrNull()?.nextContinuationData?.continuation
+        }
+        
+        response.continuationContents?.sectionListContinuation?.let { continuation ->
+            continuation.contents?.forEach { parseSectionContent(it) }
+            if (continuationToken == null) continuationToken = continuation.continuations?.firstOrNull()?.nextContinuationData?.continuation
+        }
+
+        return BrowseResult(tracks = dedupeTracks(tracks), continuationToken = continuationToken)
     }
 
     fun parseNextResults(response: NextResponse): List<Track> {
@@ -259,3 +295,8 @@ object InnerTubeParser {
         }
     }
 }
+
+data class BrowseResult(
+    val tracks: List<Track>,
+    val continuationToken: String?
+)

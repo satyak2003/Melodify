@@ -53,6 +53,7 @@ import androidx.compose.animation.SharedTransitionScope
 @Composable
 fun MiniPlayerContent(
     viewModel: PlayerViewModel,
+    showAlbumArt: Boolean = true,
     onClick: () -> Unit
 ) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
@@ -110,13 +111,17 @@ fun MiniPlayerContent(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(
-                            model = track.thumbnailUrl, 
-                            contentDescription = null, 
-                            modifier = Modifier.size(48.dp)
-                                .clip(RoundedCornerShape(8.dp)), 
-                            contentScale = ContentScale.Crop
-                        )
+                        if (showAlbumArt) {
+                            AsyncImage(
+                                model = track.thumbnailUrl, 
+                                contentDescription = null, 
+                                modifier = Modifier.size(48.dp)
+                                    .clip(RoundedCornerShape(8.dp)), 
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(modifier = Modifier.size(48.dp))
+                        }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = androidx.compose.ui.graphics.Color.White)

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -29,6 +30,8 @@ import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -96,45 +99,68 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
     }
     val displayName = userName?.let { it.split(" ").firstOrNull() ?: it } ?: "there"
     
-    // Gradient background matching concept art
-    val conceptGradient = Brush.verticalGradient(
+    // Aurora animated gradient background (YT Music-style)
+    val infiniteTransition = rememberInfiniteTransition(label = "aurora")
+    val auroraPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8000, easing = LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "aurora_phase"
+    )
+    
+    val auroraColor1 = Color(
+        red = (0x30 + (0x40 * auroraPhase)).toInt().coerceIn(0, 255),
+        green = (0x10 + (0x60 * auroraPhase)).toInt().coerceIn(0, 255),
+        blue = (0x50 + (0x40 * auroraPhase)).toInt().coerceIn(0, 255)
+    )
+    val auroraColor2 = Color(
+        red = (0x40 + (0x30 * (1f - auroraPhase))).toInt().coerceIn(0, 255),
+        green = (0x20 + (0x40 * auroraPhase)).toInt().coerceIn(0, 255),
+        blue = (0x60 + (0x50 * (1f - auroraPhase))).toInt().coerceIn(0, 255)
+    )
+    
+    val auroraGradient = Brush.verticalGradient(
         colors = listOf(
-            androidx.compose.ui.graphics.Color(0xFF140D24), // Dark purple/black
+            auroraColor1,
+            auroraColor2,
+            MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
             MaterialTheme.colorScheme.background
-        )
+        ),
+        startY = 0f,
+        endY = 1200f
     )
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(conceptGradient),
+        modifier = Modifier.fillMaxSize().background(auroraGradient),
         contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp)
     ) {
         item {
-            // Custom Top Bar
+            // Top App Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Logo & App Name
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        Icons.Rounded.GraphicEq, // Waveform proxy
+                        imageVector = Icons.Rounded.GraphicEq,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(32.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = "Melodify",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
-                // Top Right Icons
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -163,54 +189,71 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
                             AsyncImage(
                                 model = userProfileUrl,
                                 contentDescription = "Profile",
-                                modifier = Modifier.size(32.dp).clip(CircleShape),
+                                modifier = Modifier.size(28.dp).clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    (userName?.firstOrNull()?.uppercaseChar() ?: 'M').toString(),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                            Icon(
+                                Icons.Rounded.AccountCircle,
+                                contentDescription = "Profile",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(28.dp)
+                            )
                         }
                     }
                 }
             }
-        }
-        item {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(80.dp)
-            ) {
-                val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsStateWithLifecycle()
-                if (sleepRemainingMs != null) {
-                    val remainingSec = sleepRemainingMs!! / 1000
-                    val text = "Sleep Timer: %d:%02d".format(remainingSec / 60, remainingSec % 60)
+
+            Spacer(Modifier.height(8.dp))
+            val supabaseUser by com.melodify.shared.data.storage.SupabaseAuthManager.currentUser.collectAsStateWithLifecycle()
+            
+            // Greeting
+            val greeting = remember {
+                val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                when {
+                    hour < 12 -> "Good morning"
+                    hour < 17 -> "Good afternoon"
+                    else -> "Good evening"
+                }
+            }
+            val displayName = supabaseUser?.username ?: supabaseUser?.email?.substringBefore("@") ?: userName?.let { it.split(" ").firstOrNull() ?: it } ?: "there"
+            
+            Text(
+                text = "$greeting, $displayName",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Text(
+                text = "What do you want to listen to today?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+
+            val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsStateWithLifecycle()
+            if (sleepRemainingMs != null) {
+                val remainingSec = sleepRemainingMs!! / 1000
+                val text = "Sleep Timer: %d:%02d".format(remainingSec / 60, remainingSec % 60)
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
                     Row(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Rounded.Timer, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(text, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
-                
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).align(Alignment.BottomStart)) {
-                    Text("$greeting, $displayName", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                    Text("What do you want to listen to today?", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
             }
         }
         
@@ -218,27 +261,46 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
             is HomeUiState.Loading -> item { CircularProgressIndicator(modifier = Modifier.fillMaxWidth().padding(32.dp).wrapContentWidth()) }
             is HomeUiState.Success -> {
                 item {
-                    SurpriseMeHeroButton(
-                        onSurprise = {
-                            val tracks = if (state.recommendedTracks.isNotEmpty()) {
-                                state.recommendedTracks.shuffled()
-                            } else {
-                                state.trending.shuffled()
+                    val recommendedTracks = state.recommendedTracks.ifEmpty { state.trending }
+                    val lastTrack = state.lastPlayedTrack
+                    if (lastTrack != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f).aspectRatio(1f)) {
+                                SurpriseMeHeroButton(
+                                    modifier = Modifier.fillMaxSize(),
+                                    onSurprise = {
+                                        if (recommendedTracks.isNotEmpty()) {
+                                            playerViewModel.playTracks(recommendedTracks.shuffled(), 0)
+                                        }
+                                    }
+                                )
                             }
-                            if (tracks.isNotEmpty()) {
-                                playerViewModel.playTracks(tracks, 0)
+                            Box(modifier = Modifier.weight(1f).aspectRatio(1f)) {
+                                ContinueListeningCard(
+                                    modifier = Modifier.fillMaxSize(),
+                                    track = lastTrack,
+                                    positionMs = state.lastPlayedPositionMs,
+                                    onClick = {
+                                        playerViewModel.playTrack(lastTrack, state.lastPlayedPositionMs)
+                                    }
+                                )
                             }
                         }
-                    )
-                }
-
-                state.lastPlayedTrack?.let { track ->
-                    item {
-                        ContinueListeningCard(
-                            track = track,
-                            positionMs = state.lastPlayedPositionMs,
-                            onClick = {
-                                playerViewModel.playTrack(track, state.lastPlayedPositionMs)
+                    } else {
+                        SurpriseMeHeroButton(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .padding(horizontal = 16.dp),
+                            onSurprise = {
+                                if (recommendedTracks.isNotEmpty()) {
+                                    playerViewModel.playTracks(recommendedTracks.shuffled(), 0)
+                                }
                             }
                         )
                     }
@@ -265,7 +327,7 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
 }
 
 @Composable
-fun SurpriseMeHeroButton(onSurprise: () -> Unit) {
+fun SurpriseMeHeroButton(modifier: Modifier = Modifier, onSurprise: () -> Unit) {
     val interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     
@@ -307,16 +369,13 @@ fun SurpriseMeHeroButton(onSurprise: () -> Unit) {
     )
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(90.dp)
-            .padding(horizontal = 16.dp)
+        modifier = modifier
             .scale(scale)
             .clickable(interactionSource = interactionSource, indication = androidx.compose.material3.ripple()) {
                 onSurprise()
             },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Box {
@@ -335,21 +394,22 @@ fun SurpriseMeHeroButton(onSurprise: () -> Unit) {
                         )
                     )
             )
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(56.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Rounded.AutoAwesome,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.graphicsLayer {
+                            modifier = Modifier.size(32.dp).graphicsLayer {
                                 scaleX = iconScale
                                 scaleY = iconScale
                                 rotationZ = iconRotation
@@ -357,70 +417,70 @@ fun SurpriseMeHeroButton(onSurprise: () -> Unit) {
                         )
                     }
                 }
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
+                Spacer(Modifier.height(16.dp))
                 Text(
                     "Surprise Me",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    textAlign = TextAlign.Center
                 )
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    "Play a random track instantly",
+                    "Play random track",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
                 )
             }
-            Icon(Icons.Rounded.PlayArrow, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-        }
         }
     }
 }
 
 @Composable
-fun ContinueListeningCard(track: Track, positionMs: Long, onClick: () -> Unit) {
+fun ContinueListeningCard(modifier: Modifier = Modifier, track: Track, positionMs: Long, onClick: () -> Unit) {
     val sec = positionMs / 1000
     val min = sec / 60
     val remSec = sec % 60
     val timeFormatted = "%d:%02d".format(min, remSec)
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+        modifier = modifier
             .bounceClick(scaleDown = 0.97f, onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AsyncImage(
-                model = track.thumbnailUrl,
-                contentDescription = null,
-                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.PlayCircleOutline, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Continue Listening",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+            Box {
+                AsyncImage(
+                    model = track.thumbnailUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Resume", tint = Color.White, modifier = Modifier.size(32.dp))
                 }
-                Spacer(Modifier.height(2.dp))
-                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Text("Stopped at $timeFormatted", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onClick) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = "Resume", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Continue",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text(timeFormatted, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
     }
 }
@@ -434,7 +494,7 @@ fun MusicTimelineChart(stats: Map<String, Int>) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -499,7 +559,7 @@ fun TrackCard(track: Track, onClick: () -> Unit) {
     Card(
         modifier = Modifier.width(140.dp).bounceClick(scaleDown = 0.95f, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
     ) {
         Column {
             AsyncImage(model = track.thumbnailUrl, contentDescription = track.title, modifier = Modifier.fillMaxWidth().height(140.dp), contentScale = ContentScale.Crop)
@@ -526,7 +586,7 @@ fun ErrorMessage(message: String, onRetry: (() -> Unit)? = null) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
     ) {
         Column(
             modifier = Modifier.padding(24.dp).fillMaxWidth(),

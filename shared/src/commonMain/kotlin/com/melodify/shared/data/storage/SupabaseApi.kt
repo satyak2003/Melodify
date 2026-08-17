@@ -5,6 +5,13 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class SupabaseUser(
+    val email: String,
+    val username: String? = null
+)
 
 object SupabaseApi {
     private val client = HttpClient()
@@ -64,5 +71,26 @@ object SupabaseApi {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    suspend fun getUserProfile(accessToken: String): SupabaseUser? {
+        try {
+            val response = client.get("$SUPABASE_URL/auth/v1/user") {
+                header("apikey", ANON_KEY)
+                header("Authorization", "Bearer $accessToken")
+                header("Accept", "application/json")
+            }
+            if (response.status.isSuccess()) {
+                val responseText = response.bodyAsText()
+                val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(responseText).jsonObject
+                val email = json["email"]?.jsonPrimitive?.content ?: return null
+                val userMetadata = json["user_metadata"]?.jsonObject
+                val username = userMetadata?.get("username")?.jsonPrimitive?.content
+                return SupabaseUser(email, username)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
     }
 }

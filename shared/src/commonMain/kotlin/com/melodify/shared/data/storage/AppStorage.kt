@@ -4,4 +4,5 @@ import java.io.File
 
 expect object AppStorage {
     fun getStorageDir(): File
+    fun getDownloadsDir(): File
 }

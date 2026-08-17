@@ -66,8 +66,8 @@ fun PlayerBottomSheet(
                 PlayerDragState.Expanded at 0f
             },
             positionalThreshold = { distance: Float -> distance * 0.3f },
-            velocityThreshold = { with(density) { 200.dp.toPx() } },
-            snapAnimationSpec = spring(dampingRatio = 0.9f, stiffness = 1500f),
+            velocityThreshold = { with(density) { 125.dp.toPx() } },
+            snapAnimationSpec = spring(dampingRatio = 1f, stiffness = 400f),
             decayAnimationSpec = decayAnimationSpec
         )
     }
@@ -77,16 +77,13 @@ fun PlayerBottomSheet(
     val totalDistance = (maxHeightPx - minHeightPx - bottomNavHeightPx - with(density) { 4.dp.toPx() })
     val rawProgress = if (totalDistance == 0f) 0f else (1f - (offset / totalDistance)).coerceIn(0f, 1f)
 
-    // Smooth progress with spring animation for fluid feel
-    val progress by animateFloatAsState(
-        targetValue = rawProgress,
-        animationSpec = spring(dampingRatio = 0.85f, stiffness = 1200f)
-    )
+    // Smooth progress follows swipe exactly
+    val progress = rawProgress
 
-    // Animated values for shared element transitions
-    val albumArtScale = 1f + (0.8f * progress) // Scales from 1x to 1.8x (48dp -> ~86dp, then NowPlaying takes over at 280dp)
-    val albumArtTranslationY = -100f * progress // Moves up as it expands
-    val albumArtTranslationX = 0f // Center horizontally
+    // Animated values for transitions
+    val albumArtScale = 1f + (1.2f * progress) // 48dp -> ~105dp midway
+    val albumArtTranslationY = -120f * progress // Moves up to top portion
+    val albumArtTranslationX = 0f
     
     val controlsAlpha = (1f - progress).coerceIn(0f, 1f)
     val nowPlayingAlpha = progress.coerceIn(0f, 1f)
@@ -140,6 +137,7 @@ fun PlayerBottomSheet(
                     ) {
                         MiniPlayerContent(
                             viewModel = playerViewModel,
+                            showAlbumArt = progress == 0f,
                             onClick = {
                                 coroutineScope.launch {
                                     draggableState.animateTo(PlayerDragState.Expanded)
@@ -162,6 +160,7 @@ fun PlayerBottomSheet(
                         if (progress > 0.05f) {
                             NowPlayingContent(
                                 playerViewModel = playerViewModel,
+                                showAlbumArt = progress == 1f,
                                 onBack = {
                                     coroutineScope.launch {
                                         draggableState.animateTo(PlayerDragState.Collapsed)
@@ -169,6 +168,30 @@ fun PlayerBottomSheet(
                                 }
                             )
                         }
+                    }
+
+                    // Floating Shared Element Album Art
+                    if (progress > 0f && progress < 1f) {
+                        val imageSize = androidx.compose.ui.unit.lerp(48.dp, 280.dp, progress)
+                        val startX = 20.dp
+                        val endX = (configuration.screenWidthDp.dp - 280.dp) / 2
+                        val currentX = androidx.compose.ui.unit.lerp(startX, endX, progress)
+                        
+                        val startY = 8.dp
+                        val endY = 88.dp
+                        val currentY = androidx.compose.ui.unit.lerp(startY, endY, progress)
+                        
+                        val cornerRadius = androidx.compose.ui.unit.lerp(8.dp, 20.dp, progress)
+                        
+                        coil3.compose.AsyncImage(
+                            model = track.thumbnailUrl,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .offset(x = currentX, y = currentY)
+                                .size(imageSize)
+                                .clip(RoundedCornerShape(cornerRadius)),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
                     }
                 }
             }

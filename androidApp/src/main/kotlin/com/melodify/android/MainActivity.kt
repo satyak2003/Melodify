@@ -1,5 +1,6 @@
 package com.melodify.android
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -24,7 +25,6 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.melodify.android.service.PlayerService
 
 class MainActivity : ComponentActivity() {
-    private val libraryViewModel: LibraryViewModel by inject()
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,14 +37,31 @@ class MainActivity : ComponentActivity() {
         
         enableEdgeToEdge()
         
+        val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
-            }
+            permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
+            permissions.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        
+        val missingPermissions = permissions.filter { 
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED 
+        }
+        
+        if (missingPermissions.isNotEmpty()) {
+            requestPermissions(missingPermissions.toTypedArray(), 101)
         }
 
         handleIntent(intent)
-
+        
+        // Load initial Supabase state
+        val prefs = getSharedPreferences("MelodifyAuth", Context.MODE_PRIVATE)
+        val savedSessionCode = prefs.getString("SUPABASE_SESSION_TOKEN", null)
+        if (savedSessionCode != null) {
+            com.melodify.shared.data.storage.SupabaseAuthManager.login(savedSessionCode)
+        }
         
         setContent {
             MelodifyTheme {
@@ -71,13 +88,27 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         intent?.data?.let { uri ->
-            if (uri.scheme == "melodify" && uri.host == "callback") {
-                val code = uri.getQueryParameter("code")
-                if (code != null) {
-                    libraryViewModel.handleSpotifyAuthCode(code)
+            if (uri.scheme == "melodify" && (uri.host == "auth" || uri.host == "callback")) {
+                var sessionCode = uri.getQueryParameter("sessionCode")
+                
+                // Fallback for Supabase OAuth implicit flow which puts token in fragment: #access_token=...
+                if (sessionCode == null && uri.fragment != null) {
+                    val fragmentParts = uri.fragment?.split("&") ?: emptyList()
+                    for (part in fragmentParts) {
+                        if (part.startsWith("access_token=")) {
+                            sessionCode = part.substringAfter("access_token=")
+                            break
+                        }
+                    }
+                }
+                
+                if (sessionCode != null) {
+                    println("Successfully received Supabase session token.")
+                    val prefs = getSharedPreferences("MelodifyAuth", Context.MODE_PRIVATE)
+                    prefs.edit().putString("SUPABASE_SESSION_TOKEN", sessionCode).apply()
+                    com.melodify.shared.data.storage.SupabaseAuthManager.login(sessionCode)
                 }
             }
         }
     }
 }
-

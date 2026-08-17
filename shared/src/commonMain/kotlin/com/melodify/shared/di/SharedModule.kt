@@ -4,6 +4,7 @@ import com.melodify.shared.api.innertube.InnerTubeApi
 import com.melodify.shared.api.innertube.InnerTubeParser
 import com.melodify.shared.api.lyrics.LyricsApi
 import com.melodify.shared.api.spotify.SpotifyApi
+import com.melodify.shared.api.deezer.DeezerApi
 import com.melodify.shared.data.MusicRepository
 import com.melodify.shared.presentation.HomeViewModel
 import com.melodify.shared.presentation.LibraryViewModel
@@ -44,12 +45,13 @@ val sharedModule = module {
     single { InnerTubeApi(get()) }
     single { SpotifyApi(get()) }
     single { LyricsApi(get()) }
+    single { DeezerApi(get()) }
 
     // Parser (object — no need to inject, but listed for clarity)
     // InnerTubeParser is an object singleton
 
     // Repositories
-    single { MusicRepository(get(), InnerTubeParser) }
+    single { MusicRepository(get(), InnerTubeParser, get()) }
 
     // ViewModels
     viewModel { PlayerViewModel(get(), get(), get(), get()) }

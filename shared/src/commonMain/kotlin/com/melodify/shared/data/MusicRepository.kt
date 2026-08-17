@@ -1,9 +1,13 @@
 package com.melodify.shared.data
 
+import com.melodify.shared.api.deezer.DeezerApi
 import com.melodify.shared.api.innertube.InnerTubeApi
 import com.melodify.shared.api.innertube.InnerTubeParser
 import com.melodify.shared.domain.model.SearchResult
 import com.melodify.shared.domain.model.Track
+import com.melodify.shared.domain.model.Artist
+import com.melodify.shared.domain.model.Album
+import com.melodify.shared.domain.model.TrackSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -21,13 +25,21 @@ import com.melodify.shared.data.storage.YouTubeAuthManager
 
 class MusicRepository(
     private val innerTubeApi: InnerTubeApi,
-    private val innerTubeParser: InnerTubeParser
+    private val innerTubeParser: InnerTubeParser,
+    private val deezerApi: DeezerApi
 ) {
 
     suspend fun search(query: String): Result<SearchResult> = runCatching {
         withContext(Dispatchers.IO) {
             val response = innerTubeApi.search(query)
-            innerTubeParser.parseSearchResults(response)
+            val parsedResult = innerTubeParser.parseSearchResults(response)
+            
+            // Enhance tracks with Deezer metadata
+            val enhancedTracks = parsedResult.tracks.map { track ->
+                enhanceTrack(track)
+            }
+            
+            parsedResult.copy(tracks = enhancedTracks)
         }
     }
 
@@ -50,14 +62,85 @@ class MusicRepository(
     suspend fun getHomeFeed(): Result<List<Track>> = runCatching {
         withContext(Dispatchers.IO) {
             val response = innerTubeApi.getHomeFeed()
-            innerTubeParser.parseBrowseResults(response)
+            innerTubeParser.parseBrowseResults(response).tracks
         }
     }
 
-    suspend fun getYouTubePlaylistTracks(playlistId: String): Result<List<Track>> = runCatching {
+    suspend fun getYouTubePlaylistTracks(playlistId: String, accessToken: String? = null): Result<List<Track>> = runCatching {
         withContext(Dispatchers.IO) {
-            val response = innerTubeApi.getYouTubePlaylist(playlistId)
-            innerTubeParser.parseBrowseResults(response)
+            val allTracks = mutableListOf<Track>()
+            
+            // If we have an OAuth token, use YouTube Data API v3
+            if (accessToken != null && accessToken.isNotBlank()) {
+                val client = HttpClient()
+                var nextPageToken: String? = null
+                
+                do {
+                    val url = buildString {
+                        append("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&maxResults=50&playlistId=$playlistId")
+                        if (nextPageToken != null) append("&pageToken=$nextPageToken")
+                    }
+                    val response = client.get(url) {
+                        header("Authorization", "Bearer $accessToken")
+                        header("Accept", "application/json")
+                    }
+                    if (response.status.value in 200..299) {
+                        val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(response.bodyAsText()).jsonObject
+                        val items = json["items"]?.jsonArray ?: emptyList()
+                        
+                        val pageTracks = items.mapNotNull { item ->
+                            val snippet = item.jsonObject["snippet"]?.jsonObject
+                            val contentDetails = item.jsonObject["contentDetails"]?.jsonObject
+                            val videoId = contentDetails?.get("videoId")?.jsonPrimitive?.content
+                            val title = snippet?.get("title")?.jsonPrimitive?.content ?: ""
+                            val author = snippet?.get("videoOwnerChannelTitle")?.jsonPrimitive?.content ?: "Unknown Artist"
+                            val thumbnailUrl = snippet?.get("thumbnails")?.jsonObject?.get("high")?.jsonObject?.get("url")?.jsonPrimitive?.content
+                                ?: snippet?.get("thumbnails")?.jsonObject?.get("default")?.jsonObject?.get("url")?.jsonPrimitive?.content ?: ""
+                                
+                            if (videoId != null && title.isNotBlank() && title != "Private video" && title != "Deleted video") {
+                                Track(
+                                    id = videoId,
+                                    title = title,
+                                    artists = listOf(Artist(id = author, name = author, thumbnailUrl = null)),
+                                    album = null,
+                                    thumbnailUrl = thumbnailUrl,
+                                    durationMs = 200000L, // Placeholder duration
+                                    youtubeVideoId = videoId,
+                                    source = TrackSource.YOUTUBE
+                                )
+                            } else null
+                        }
+                        allTracks.addAll(pageTracks)
+                        nextPageToken = json["nextPageToken"]?.jsonPrimitive?.content
+                    } else {
+                        break // Fallback or stop if error
+                    }
+                } while (nextPageToken != null)
+                
+                client.close()
+                if (allTracks.isNotEmpty()) return@withContext allTracks
+            }
+            
+            // Fallback to InnerTube API (capped at 100 anonymously)
+            var response = innerTubeApi.getYouTubePlaylist(playlistId)
+            var parsed = innerTubeParser.parseBrowseResults(response)
+            allTracks.addAll(parsed.tracks)
+            
+            // Fetch all pages, max out at ~1000 tracks to avoid infinite loops or memory issues
+            while (parsed.continuationToken != null && allTracks.size < 1000) {
+                try {
+                    response = innerTubeApi.getYouTubePlaylistContinuation(parsed.continuationToken!!)
+                    parsed = innerTubeParser.parseBrowseResults(response)
+                    if (parsed.tracks.isEmpty()) break
+                    allTracks.addAll(parsed.tracks)
+                } catch (e: Exception) {
+                    println("Failed to fetch continuation: ${e.message}")
+                    break
+                }
+            }
+            
+            // Enhance with Deezer best-effort
+            allTracks.map { enhanceTrack(it) }
         }
     }
 
@@ -95,6 +178,9 @@ class MusicRepository(
                         header("Authorization", "Bearer $accessToken")
                         header("Accept", "application/json")
                     }
+                    if (response.status.value !in 200..299) {
+                        throw Exception("YouTube API Error: ${response.status.value} - ${response.bodyAsText()}")
+                    }
                     val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(response.bodyAsText()).jsonObject
                     val items = json["items"]?.jsonArray ?: emptyList()
                     
@@ -121,7 +207,7 @@ class MusicRepository(
     suspend fun matchSpotifyTrack(title: String, artist: String, durationMs: Long): Result<Track> = runCatching {
         withContext(Dispatchers.IO) {
             val query = "$title $artist".trim()
-            val searchResult = innerTubeApi.search(query)
+            val searchResult = innerTubeApi.searchVideo(query)
             val parsedResult = innerTubeParser.parseSearchResults(searchResult)
             val durationSeconds = (durationMs / 1000).toInt()
 
@@ -138,5 +224,40 @@ class MusicRepository(
             fallbackParsed.tracks.firstOrNull()
                 ?: throw Exception("No matching track found for: $query")
         }
+    }
+
+    suspend fun enhanceTrack(track: Track): Track {
+        try {
+            val query = "${track.title} ${track.artists.firstOrNull()?.name ?: ""}".trim()
+            val deezerResult = deezerApi.searchTrack(query, limit = 1)
+            val bestMatch = deezerResult?.data?.firstOrNull()
+            
+            if (bestMatch != null) {
+                return track.copy(
+                    title = bestMatch.title,
+                    artists = listOf(Artist(id = bestMatch.artist.id.toString(), name = bestMatch.artist.name, thumbnailUrl = bestMatch.artist.picture_xl)),
+                    album = Album(id = bestMatch.album.id.toString(), title = bestMatch.album.title, thumbnailUrl = bestMatch.album.cover_xl),
+                    thumbnailUrl = bestMatch.album.cover_xl ?: track.thumbnailUrl,
+                    durationMs = bestMatch.duration * 1000L
+                )
+            } else {
+                // Fallback to InnerTube
+                val fallbackResult = innerTubeApi.search(query)
+                val fallbackParsed = innerTubeParser.parseSearchResults(fallbackResult)
+                val ytMatch = fallbackParsed.tracks.firstOrNull()
+                if (ytMatch != null) {
+                    return track.copy(
+                        title = ytMatch.title,
+                        artists = ytMatch.artists,
+                        album = ytMatch.album,
+                        thumbnailUrl = ytMatch.thumbnailUrl ?: track.thumbnailUrl,
+                        durationMs = ytMatch.durationMs
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            println("Deezer/InnerTube enhancement failed for ${track.title}: ${e.message}")
+        }
+        return track
     }
 }

@@ -19,6 +19,13 @@ object InnerTubeConstants {
         "hl" to "en"
     )
 
+    val WEB_CLIENT = mapOf(
+        "clientName" to "WEB",
+        "clientVersion" to "2.20230405.08.01",
+        "gl" to "US",
+        "hl" to "en"
+    )
+
     val ANDROID_MUSIC_CLIENT = mapOf(
         "clientName" to "ANDROID_MUSIC",
         "clientVersion" to "6.47.52",

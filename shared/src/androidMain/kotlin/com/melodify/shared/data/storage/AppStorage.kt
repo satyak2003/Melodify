@@ -19,4 +19,14 @@ actual object AppStorage {
         }
         return dir
     }
+
+    actual fun getDownloadsDir(): File {
+        val baseDir = applicationContext?.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC)
+            ?: android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC)
+        val dir = File(baseDir, "Melodify/downloads")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
 }

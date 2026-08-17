@@ -1,144 +1,25 @@
 package com.melodify.shared.api.spotify
 
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.Parameters
 import io.ktor.client.statement.bodyAsText
-import kotlinx.coroutines.delay
+import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
 class SpotifyApi(private val httpClient: HttpClient) {
-    var accessToken: String? = null
 
-    fun hasValidToken(): Boolean = accessToken != null
-
-    private var refreshTokenCallback: ((String) -> Unit)? = null
-    private var tokenRefreshInProgress = false
-
-    fun setRefreshTokenCallback(callback: (String) -> Unit) {
-        refreshTokenCallback = callback
-    }
-
-    private suspend inline fun <reified T> getWithAuth(url: String): T {
-        val token = accessToken ?: throw IllegalStateException("No access token available")
-        var attempts = 0
-        while (true) {
-            try {
-                val response = httpClient.get(url) {
-                    header(HttpHeaders.Authorization, "Bearer $token")
-                }
-                return response.body()
-            } catch (e: Exception) {
-                val statusCode = when {
-                    e.message?.contains("401") == true -> HttpStatusCode.Unauthorized
-                    e.message?.contains("403") == true -> HttpStatusCode.Forbidden
-                    e.message?.contains("429") == true -> HttpStatusCode.TooManyRequests
-                    else -> null
-                }
-
-                if (statusCode == HttpStatusCode.Unauthorized || statusCode == HttpStatusCode.Forbidden) {
-                    if (!tokenRefreshInProgress) {
-                        tryRefreshToken()
-                    }
-                    throw e
-                }
-
-                if (statusCode == HttpStatusCode.TooManyRequests) {
-                    attempts++
-                    if (attempts > 5) throw e
-                    delay(2000L * attempts)
-                } else {
-                    throw e
-                }
-            }
-        }
-    }
-
-    private fun tryRefreshToken() {
-        if (tokenRefreshInProgress) return
-        val callback = refreshTokenCallback
-        if (callback != null) {
-            tokenRefreshInProgress = true
-            callback("")
-            tokenRefreshInProgress = false
-        }
-    }
-
-    suspend fun getUserProfile(): SpotifyUser {
-        return getWithAuth("https://api.spotify.com/v1/me")
-    }
-
-    suspend fun getUserPlaylists(limit: Int = 50): List<SpotifyPlaylist> {
-        val response: SpotifyPlaylistsResponse = getWithAuth("https://api.spotify.com/v1/me/playlists?limit=$limit")
-        return response.items.filterNotNull()
-    }
-
-    suspend fun getPlaylist(playlistId: String): SpotifyPlaylist {
-        return getWithAuth("https://api.spotify.com/v1/playlists/$playlistId")
-    }
-
-    suspend fun getPlaylistTracks(playlistId: String, limit: Int = 50, offset: Int = 0): SpotifyPlaylistTracksResponse {
-        return getWithAuth("https://api.spotify.com/v1/playlists/$playlistId/items?limit=$limit&offset=$offset")
-    }
-
-    suspend fun getAllPlaylistTracks(playlistId: String): List<SpotifyTrack> {
-        val tracks = mutableListOf<SpotifyTrack>()
-        var offset = 0
-        val limit = 100 // Spotify API max limit per request
-        while (true) {
-            val response = getPlaylistTracks(playlistId, limit, offset)
-            tracks.addAll(response.items.mapNotNull { it?.track })
-            if (response.next == null) break
-            offset += limit
-            delay(150L) // Throttle requests to avoid rate limits
-        }
-        return tracks
-    }
-
-    suspend fun getSavedTracks(limit: Int = 50, offset: Int = 0): List<SpotifyTrack> {
-        val response: Paging<SpotifyPlaylistItem> = getWithAuth("https://api.spotify.com/v1/me/tracks?limit=$limit&offset=$offset")
-        return response.items.mapNotNull { it.track }
-    }
-
-    suspend fun exchangeCodeForToken(code: String, codeVerifier: String, redirectUri: String, clientId: String): SpotifyToken {
-        val response = httpClient.submitForm(
-            url = "https://accounts.spotify.com/api/token",
-            formParameters = Parameters.build {
-                append("client_id", clientId)
-                append("grant_type", "authorization_code")
-                append("code", code)
-                append("redirect_uri", redirectUri)
-                append("code_verifier", codeVerifier)
-            }
-        )
-        return response.body()
-    }
-
-    suspend fun refreshToken(refreshToken: String, clientId: String): SpotifyToken {
-        val response = httpClient.submitForm(
-            url = "https://accounts.spotify.com/api/token",
-            formParameters = Parameters.build {
-                append("client_id", clientId)
-                append("grant_type", "refresh_token")
-                append("refresh_token", refreshToken)
-            }
-        )
-        return response.body()
-    }
-
-    suspend fun getPlaylistTracksFromEmbed(playlistId: String): List<SpotifyTrack> {
+    suspend fun getPlaylist(playlistId: String): Pair<SpotifyPlaylist, List<SpotifyTrack>> {
         val response = httpClient.get("https://open.spotify.com/embed/playlist/$playlistId")
+        if (!response.status.isSuccess()) {
+            throw Exception("Failed to fetch playlist embed page")
+        }
         val html = response.bodyAsText()
 
         val startIndex = html.indexOf("<script id=\"__NEXT_DATA__\" type=\"application/json\">")
-        if (startIndex == -1) return emptyList()
+        if (startIndex == -1) throw Exception("__NEXT_DATA__ JSON not found in embed HTML")
+        
         val jsonStart = html.indexOf(">", startIndex) + 1
         val jsonEnd = html.indexOf("</script>", jsonStart)
         val jsonStr = html.substring(jsonStart, jsonEnd)
@@ -147,23 +28,40 @@ class SpotifyApi(private val httpClient: HttpClient) {
         val parsed = json.parseToJsonElement(jsonStr).jsonObject
 
         val tracksList = mutableListOf<SpotifyTrack>()
+        var playlistName = "Spotify Playlist"
+        var playlistDesc = ""
+        var playlistImageUrl = ""
+
         try {
             val props = parsed["props"]?.jsonObject
             val pageProps = props?.get("pageProps")?.jsonObject
             val state = pageProps?.get("state")?.jsonObject
             val data = state?.get("data")?.jsonObject
             val entity = data?.get("entity")?.jsonObject
+            
+            // Extract Playlist Info
+            playlistName = entity?.get("name")?.toString()?.replace("\"", "") ?: "Spotify Playlist"
+            playlistDesc = entity?.get("description")?.toString()?.replace("\"", "") ?: ""
+            playlistImageUrl = entity?.get("coverArt")?.jsonObject?.get("sources")?.jsonArray?.firstOrNull()?.jsonObject?.get("url")?.toString()?.replace("\"", "") ?: ""
+
             val trackList = entity?.get("trackList")?.jsonArray
 
             if (trackList != null) {
                 for (item in trackList) {
                     val itemObj = item.jsonObject
-                    val id = itemObj["id"]?.toString()?.replace("\"", "")
+                    // The old 'id' field is gone. Extract from 'uri' e.g. spotify:track:3ouNEk0tv5TTi8VWMe1xbX
+                    var id = itemObj["id"]?.toString()?.replace("\"", "")
+                    if (id == null || id == "null") {
+                        val uri = itemObj["uri"]?.toString()?.replace("\"", "")
+                        if (uri != null && uri.contains("spotify:track:")) {
+                            id = uri.substringAfterLast(":")
+                        }
+                    }
                     val title = itemObj["title"]?.toString()?.replace("\"", "")
                     val subtitle = itemObj["subtitle"]?.toString()?.replace("\"", "")
                     val duration = itemObj["duration"]?.toString()?.toLongOrNull()
 
-                    if (title != null) {
+                    if (title != null && id != null) {
                         tracksList.add(
                             SpotifyTrack(
                                 id = id,
@@ -177,7 +75,16 @@ class SpotifyApi(private val httpClient: HttpClient) {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            throw Exception("Error parsing Spotify embed JSON: ${e.message}")
         }
-        return tracksList
+        
+        val playlist = SpotifyPlaylist(
+            id = playlistId,
+            name = playlistName,
+            description = playlistDesc,
+            images = if (playlistImageUrl.isNotBlank()) listOf(SpotifyImage(url = playlistImageUrl)) else emptyList()
+        )
+
+        return Pair(playlist, tracksList)
     }
 }

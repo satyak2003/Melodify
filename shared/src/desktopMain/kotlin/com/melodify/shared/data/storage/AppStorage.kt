@@ -11,4 +11,13 @@ actual object AppStorage {
         }
         return dir
     }
+
+    actual fun getDownloadsDir(): File {
+        val userHome = System.getProperty("user.home") ?: "."
+        val dir = File(userHome, "Music/Melodify/downloads")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
 }

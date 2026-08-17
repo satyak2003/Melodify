@@ -28,15 +28,13 @@ import androidx.activity.compose.BackHandler
 @Composable
 fun ProfileScreen(onBack: () -> Unit, navController: NavController) {
     BackHandler(onBack = onBack)
-    val isGoogleLoggedIn by AuthManager.isGoogleLoggedIn.collectAsState()
-    val isYtLoggedIn by YouTubeAuthManager.isLoggedIn.collectAsState()
-    val ytAccountName by YouTubeAuthManager.userAccountName.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences("MelodifyAuth", android.content.Context.MODE_PRIVATE)
+    val currentUser by com.melodify.shared.data.storage.SupabaseAuthManager.currentUser.collectAsState()
+    val isMelodifyLoggedIn = currentUser != null
 
-    var emailInput by remember { mutableStateOf("") }
-    var passwordInput by remember { mutableStateOf("") }
-    var showCookieDialog by remember { mutableStateOf(false) }
-    var cookieInput by remember { mutableStateOf("") }
+    val isGoogleLoggedIn by AuthManager.isGoogleLoggedIn.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -81,56 +79,47 @@ fun ProfileScreen(onBack: () -> Unit, navController: NavController) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.padding(horizontal = 4.dp))
-                    Text(if (isGoogleLoggedIn) "Welcome Back" else "Log In", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Melodify Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
                 Spacer(Modifier.height(12.dp))
                 
-                if (isGoogleLoggedIn) {
-                    Text("Status: Signed in with Google", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (isMelodifyLoggedIn) {
+                    Text(
+                        "Logged in as ${currentUser?.email}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://melodify-backend-2469.onrender.com/profile"))
+                        navController.context.startActivity(intent)
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Manage Account")
+                    }
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = { coroutineScope.launch { AuthManager.logout() } }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                    Button(
+                        onClick = {
+                            prefs.edit().remove("SUPABASE_SESSION_TOKEN").apply()
+                            com.melodify.shared.data.storage.SupabaseAuthManager.logout()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
                         Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
                         Spacer(Modifier.padding(horizontal = 4.dp))
-                        Text("Logout")
+                        Text("Log Out", color = MaterialTheme.colorScheme.onError)
                     }
                 } else {
-                    // Email/Password Login
-                    OutlinedTextField(
-                        value = emailInput,
-                        onValueChange = { emailInput = it },
-                        label = { Text("Email") },
-                        leadingIcon = { Icon(Icons.Rounded.Email, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = fieldColors
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = { passwordInput = it },
-                        label = { Text("Password") },
-                        leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = fieldColors
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { /* TODO: Implement Firebase Email Login */ }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Log In with Email")
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text("OR", modifier = Modifier.align(Alignment.CenterHorizontally), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = {
-                        coroutineScope.launch {
-                            val tokens = AuthManager.loginWithGoogle()
-                            if (tokens?.idToken?.isNotBlank() == true) {
-                                SupabaseApi.signInWithGoogleIdToken(tokens.idToken)
-                            }
-                        }
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Log In with Google")
+                    Text("Log in or sign up to sync your library, settings, and profile across devices.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://melodify-backend-2469.onrender.com/login"))
+                            navController.context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Login / Sign Up")
                     }
                 }
             }
@@ -138,54 +127,34 @@ fun ProfileScreen(onBack: () -> Unit, navController: NavController) {
 
         Spacer(Modifier.height(16.dp))
 
-        // YouTube Music Link Card
+        // YouTube / Google Integration Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Streaming Services", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text(if (isGoogleLoggedIn) "Google Account" else "Connect Google", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
                 Spacer(Modifier.height(12.dp))
                 
-                Text(
-                    if (isYtLoggedIn) "YouTube Music: Connected ($ytAccountName)" else "YouTube Music: Not Connected",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-                if (!isYtLoggedIn) {
-                    TextButton(onClick = { showCookieDialog = !showCookieDialog }) {
-                        Text("Manually Connect YT Account (Advanced)")
+                if (isGoogleLoggedIn) {
+                    Text("Status: Connected to YouTube", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { coroutineScope.launch { AuthManager.logout() } }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
+                        Spacer(Modifier.padding(horizontal = 4.dp))
+                        Text("Disconnect Google")
                     }
                 } else {
-                    TextButton(onClick = { YouTubeAuthManager.logout() }) {
-                        Text("Disconnect YT Music", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-
-                if (showCookieDialog && !isYtLoggedIn) {
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = cookieInput,
-                        onValueChange = { cookieInput = it },
-                        label = { Text("Paste SAPISID Cookie Header") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = fieldColors
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = {
-                        if (cookieInput.isNotBlank()) {
-                            YouTubeAuthManager.loginWithCookies(cookieInput)
-                            cookieInput = ""
-                            showCookieDialog = false
-                        }
-                    }, enabled = cookieInput.isNotBlank()) {
-                        Text("Save & Log In")
-                    }
+                    Text("Connect your Google account to sync YouTube playlists.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
+
+        Spacer(Modifier.height(16.dp))
     }
 }

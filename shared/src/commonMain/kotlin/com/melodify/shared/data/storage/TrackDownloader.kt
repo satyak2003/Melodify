@@ -18,25 +18,26 @@ import java.util.concurrent.atomic.AtomicInteger
 
 object TrackDownloader {
     val downloadsDir: File
-        get() {
-            val dir = File(AppStorage.getStorageDir(), "downloads")
-            if (!dir.exists()) dir.mkdirs()
-            return dir
-        }
+        get() = AppStorage.getDownloadsDir()
 
     private fun targetFileFor(track: Track): File = File(downloadsDir, "${track.id}.m4a")
     private fun partialFileFor(track: Track): File = File(downloadsDir, "${track.id}.m4a.part")
 
+    private fun targetFileFlac(track: Track): File = File(downloadsDir, "${track.id}.flac")
+
     fun isDownloaded(track: Track): Boolean {
         if (track.localPath != null && File(track.localPath).exists()) return true
-        val targetFile = targetFileFor(track)
-        return targetFile.exists() && targetFile.length() > 0
+        val targetM4a = targetFileFor(track)
+        val targetFlac = targetFileFlac(track)
+        return (targetM4a.exists() && targetM4a.length() > 0) || (targetFlac.exists() && targetFlac.length() > 0)
     }
 
     fun getDownloadedPath(track: Track): String? {
         if (track.localPath != null && File(track.localPath).exists()) return track.localPath
-        val targetFile = targetFileFor(track)
-        return if (targetFile.exists()) targetFile.absolutePath else null
+        val targetFlac = targetFileFlac(track)
+        if (targetFlac.exists() && targetFlac.length() > 0) return targetFlac.absolutePath
+        val targetM4a = targetFileFor(track)
+        return if (targetM4a.exists() && targetM4a.length() > 0) targetM4a.absolutePath else null
     }
 
     suspend fun downloadTrack(
@@ -50,8 +51,6 @@ object TrackDownloader {
                 return@runCatching track.copy(localPath = targetFile.absolutePath)
             }
 
-            val partialFile = partialFileFor(track)
-
             var activeTrack = track
             val videoId = track.youtubeVideoId ?: track.id
             val streamUrl = try {
@@ -64,8 +63,35 @@ object TrackDownloader {
                 )
                 musicRepository.getStreamUrl(activeTrack.youtubeVideoId ?: activeTrack.id).getOrThrow()
             }
+            
+            return@runCatching downloadFromUrl(activeTrack, streamUrl, targetFile, onProgress)
+        }
+    }
 
-            val conn = URL(streamUrl).openConnection() as HttpURLConnection
+    suspend fun downloadFlacFromUrl(
+        track: Track,
+        url: String,
+        onProgress: (Float) -> Unit = {}
+    ): Result<Track> = withContext(Dispatchers.IO) {
+        runCatching {
+            val targetFile = targetFileFlac(track)
+            if (targetFile.exists() && targetFile.length() > 0) {
+                onProgress(1.0f)
+                return@runCatching track.copy(localPath = targetFile.absolutePath)
+            }
+            return@runCatching downloadFromUrl(track, url, targetFile, onProgress)
+        }
+    }
+
+    private suspend fun downloadFromUrl(
+        track: Track,
+        streamUrl: String,
+        targetFile: File,
+        onProgress: (Float) -> Unit
+    ): Track = withContext(Dispatchers.IO) {
+        val partialFile = File(downloadsDir, "${targetFile.name}.part")
+        
+        val conn = URL(streamUrl).openConnection() as HttpURLConnection
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             conn.connectTimeout = 15_000
             conn.readTimeout = 30_000
@@ -121,12 +147,8 @@ object TrackDownloader {
                 throw IOException("Download produced an empty file for ${track.title}")
             }
 
-            activeTrack.copy(localPath = targetFile.absolutePath)
-        }.onFailure { e ->
-            println("TrackDownloader error for track ${track.id}: ${e.message}")
-            e.printStackTrace()
+            track.copy(localPath = targetFile.absolutePath)
         }
-    }
 
     suspend fun downloadPlaylistParallel(
         tracks: List<Track>,

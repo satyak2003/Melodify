@@ -88,10 +88,12 @@ class PlaybackManager(
                         } else {
                             // Retry matching if initial stream lookup failed
                             val matched = musicRepository.matchSpotifyTrack(track.title, track.artistNames, track.durationMs).getOrThrow()
+                            val matchedId = matched.youtubeVideoId ?: matched.id
                             activeTrack = track.copy(
-                                youtubeVideoId = matched.youtubeVideoId ?: matched.id,
+                                youtubeVideoId = matchedId,
                                 thumbnailUrl = track.thumbnailUrl ?: matched.thumbnailUrl
                             )
+                            com.melodify.shared.data.storage.LibraryStorage.updateTrackYoutubeId(track.id, matchedId)
                             musicRepository.getStreamUrl(activeTrack.youtubeVideoId ?: activeTrack.id).getOrThrow()
                         }
                     }

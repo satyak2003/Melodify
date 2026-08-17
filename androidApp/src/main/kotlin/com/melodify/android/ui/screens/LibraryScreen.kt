@@ -46,7 +46,7 @@ fun LibraryScreen(
     val viewModel: LibraryViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
-    val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsStateWithLifecycle()
+
     val uriHandler = LocalUriHandler.current
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -209,6 +209,13 @@ fun LibraryScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                IconButton(onClick = { navController.navigate(Screen.Downloads.route) }) {
+                    Icon(
+                        Icons.Rounded.Download,
+                        contentDescription = "Downloads",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 IconButton(onClick = { showCreatePlaylistDialog = true }) {
                     Icon(
                         Icons.Rounded.Add,
@@ -271,15 +278,7 @@ fun LibraryScreen(
             ImportProgressCard(progress)
         }
 
-        // Spotify connect button
-        if (!isSpotifyConnected && importProgress == null) {
-            SpotifyConnectCard(
-                onConnect = {
-                    val authUrl = viewModel.startSpotifyLogin(SpotifyAuthHelper.ANDROID_REDIRECT_URI)
-                    uriHandler.openUri(authUrl)
-                }
-            )
-        }
+
 
         when (val state = uiState) {
             is LibraryUiState.Loading -> {
@@ -298,6 +297,24 @@ fun LibraryScreen(
                             )
                         }
                         items(state.spotifyPlaylists) { playlist ->
+                            PlaylistItem(
+                                playlist = playlist,
+                                onClick = {
+                                    navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id))
+                                },
+                                onLongClick = { playlistToDelete = playlist; showDeleteDialog = true }
+                            )
+                        }
+                    }
+
+                    if (state.youtubePlaylists.isNotEmpty()) {
+                        item {
+                            SectionHeader(
+                                title = "YouTube Playlists",
+                                icon = Icons.Rounded.VideoLibrary
+                            )
+                        }
+                        items(state.youtubePlaylists) { playlist ->
                             PlaylistItem(
                                 playlist = playlist,
                                 onClick = {

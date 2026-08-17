@@ -19,6 +19,7 @@ enum class SleepOption(val label: String, val minutes: Int? = null) {
     MIN_30("30 Minutes", 30),
     MIN_45("45 Minutes", 45),
     MIN_60("60 Minutes", 60),
+    CUSTOM("Custom Time"),
     END_OF_TRACK("End of Track")
 }
 

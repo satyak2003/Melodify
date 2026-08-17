@@ -53,6 +53,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun NowPlayingContent(
     playerViewModel: PlayerViewModel,
+    showAlbumArt: Boolean = true,
     onBack: () -> Unit
 ) {
     val libraryViewModel: com.melodify.shared.presentation.LibraryViewModel = koinViewModel()
@@ -63,6 +64,8 @@ fun NowPlayingContent(
     val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsStateWithLifecycle()
     val track = playerState.currentTrack
     var showSleepTimerMenu by remember { mutableStateOf(false) }
+    var showCustomTimeDialog by remember { mutableStateOf(false) }
+    var customTimeInput by remember { mutableStateOf("") }
 
     if (track == null) {
         Box(
@@ -115,16 +118,105 @@ fun NowPlayingContent(
                                 tint = if (sleepOption != SleepOption.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
                             )
                         }
-                        DropdownMenu(expanded = showSleepTimerMenu, onDismissRequest = { showSleepTimerMenu = false }) {
-                            DropdownMenuItem(text = { Text("Sleep Timer Off") }, onClick = { playerViewModel.setSleepOption(SleepOption.OFF); showSleepTimerMenu = false })
-                            DropdownMenuItem(text = { Text("15 Minutes") }, onClick = { playerViewModel.setSleepOption(SleepOption.MIN_15, 15); showSleepTimerMenu = false })
-                            DropdownMenuItem(text = { Text("30 Minutes") }, onClick = { playerViewModel.setSleepOption(SleepOption.MIN_30, 30); showSleepTimerMenu = false })
-                            DropdownMenuItem(text = { Text("45 Minutes") }, onClick = { playerViewModel.setSleepOption(SleepOption.MIN_45, 45); showSleepTimerMenu = false })
-                            DropdownMenuItem(text = { Text("60 Minutes") }, onClick = { playerViewModel.setSleepOption(SleepOption.MIN_60, 60); showSleepTimerMenu = false })
-                            DropdownMenuItem(text = { Text("End of Song") }, onClick = { playerViewModel.setSleepOption(SleepOption.END_OF_TRACK); showSleepTimerMenu = false })
-                        }
-
                     }
+                }
+
+                if (showSleepTimerMenu) {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    ModalBottomSheet(
+                        onDismissRequest = { showSleepTimerMenu = false },
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+                        ) {
+                            Text(
+                                "Sleep Timer",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                            HorizontalDivider()
+                            
+                            data class SleepTimerOption(val label: String, val option: SleepOption, val minutes: Int? = null)
+                            val options = listOf(
+                                SleepTimerOption("Sleep Timer Off", SleepOption.OFF),
+                                SleepTimerOption("15 Minutes", SleepOption.MIN_15, 15),
+                                SleepTimerOption("30 Minutes", SleepOption.MIN_30, 30),
+                                SleepTimerOption("45 Minutes", SleepOption.MIN_45, 45),
+                                SleepTimerOption("60 Minutes", SleepOption.MIN_60, 60),
+                                SleepTimerOption("Custom Time...", SleepOption.CUSTOM),
+                                SleepTimerOption("End of Song", SleepOption.END_OF_TRACK)
+                            )
+                            
+                            options.forEach { opt ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (opt.option == SleepOption.CUSTOM) {
+                                                showCustomTimeDialog = true
+                                                showSleepTimerMenu = false
+                                            } else {
+                                                if (opt.minutes != null) {
+                                                    playerViewModel.setSleepOption(opt.option, opt.minutes)
+                                                } else {
+                                                    playerViewModel.setSleepOption(opt.option)
+                                                }
+                                                showSleepTimerMenu = false
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (opt.option == SleepOption.OFF) Icons.Rounded.TimerOff else Icons.Rounded.Timer,
+                                        contentDescription = null,
+                                        tint = if (sleepOption == opt.option) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(Modifier.width(16.dp))
+                                    Text(
+                                        opt.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = if (sleepOption == opt.option) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = if (sleepOption == opt.option) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (showCustomTimeDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showCustomTimeDialog = false },
+                        title = { Text("Custom Sleep Timer") },
+                        text = {
+                            OutlinedTextField(
+                                value = customTimeInput,
+                                onValueChange = { if (it.all { char -> char.isDigit() }) customTimeInput = it },
+                                label = { Text("Minutes") },
+                                singleLine = true,
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val mins = customTimeInput.toIntOrNull()
+                                if (mins != null && mins > 0) {
+                                    playerViewModel.setSleepOption(SleepOption.CUSTOM, mins)
+                                }
+                                showCustomTimeDialog = false
+                            }) {
+                                Text("Start Timer")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showCustomTimeDialog = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
                 }
 
                 if (sleepOption != SleepOption.OFF) {
@@ -145,9 +237,12 @@ fun NowPlayingContent(
                         Card(
                             modifier = Modifier.size(280.dp),
                             shape = RoundedCornerShape(20.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+                            colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                         ) {
-                            AsyncImage(model = track.thumbnailUrl, contentDescription = track.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            if (showAlbumArt) {
+                                AsyncImage(model = track.thumbnailUrl, contentDescription = track.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            }
                         }
 
                         Spacer(Modifier.height(24.dp))

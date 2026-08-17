@@ -23,6 +23,7 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -82,6 +83,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector,
     object NowPlaying : Screen("now_playing", "Now Playing", Icons.Rounded.MusicNote)
     object Settings : Screen("settings", "Settings", Icons.Rounded.Settings)
     object Profile : Screen("profile", "Profile", Icons.Rounded.Person)
+    object Downloads : Screen("downloads", "Downloads", Icons.Rounded.Download)
     object About : Screen("about", "About", Icons.Rounded.Info)
     object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Playlist", Icons.Rounded.PlaylistPlay) {
         fun createRoute(playlistId: String) = "playlist_detail/$playlistId"
@@ -150,11 +152,20 @@ fun MelodifyApp() {
                         composable(Screen.About.route) {
                             AboutScreen(onBack = { navController.popBackStack() })
                         }
-                        composable(Screen.Settings.route) {
+                        composable(
+                            Screen.Settings.route,
+                            enterTransition = { androidx.compose.animation.slideInVertically(initialOffsetY = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)) },
+                            exitTransition = { androidx.compose.animation.slideOutVertically(targetOffsetY = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) },
+                            popEnterTransition = { fadeIn(animationSpec = tween(400)) },
+                            popExitTransition = { androidx.compose.animation.slideOutVertically(targetOffsetY = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) }
+                        ) {
                             com.melodify.android.ui.screens.SettingsScreen(onBack = { navController.popBackStack() }, navController = navController)
                         }
                         composable(Screen.Profile.route) {
                             ProfileScreen(onBack = { navController.popBackStack() }, navController = navController)
+                        }
+                        composable(Screen.Downloads.route) {
+                            com.melodify.android.ui.screens.DownloadsScreen(navController = navController, onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Screen.PlaylistDetail.route,
@@ -178,11 +189,10 @@ fun BottomNavBar(navController: NavController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Determine logical active tab
     val currentTab = when {
         currentRoute == Screen.Home.route -> Screen.Home
         currentRoute == Screen.Search.route -> Screen.Search
-        currentRoute == Screen.Library.route || currentRoute?.startsWith("playlist_detail/") == true -> Screen.Library
+        currentRoute == Screen.Library.route || currentRoute?.startsWith("playlist_detail/") == true || currentRoute == Screen.Downloads.route -> Screen.Library
         else -> null
     }
 

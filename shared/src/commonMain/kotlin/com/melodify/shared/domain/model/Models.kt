@@ -36,6 +36,8 @@ enum class TrackSource {
     LOCAL      // Local file on device/desktop
 }
 
+
+
 @Serializable
 data class Artist(
     val id: String,
@@ -69,7 +71,8 @@ data class Playlist(
 enum class PlaylistSource {
     LOCAL,
     SPOTIFY,
-    YOUTUBE
+    YOUTUBE,
+    JELLYFIN
 }
 
 @Serializable

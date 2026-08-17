@@ -228,6 +228,61 @@ fun DesktopSettingsScreen() {
             }
         }
 
+        Spacer(Modifier.height(20.dp))
 
+        // Soulseek Settings Card
+        val soulseekUser by com.melodify.shared.data.storage.SoulseekSettings.username.collectAsState()
+        val soulseekPass by com.melodify.shared.data.storage.SoulseekSettings.password.collectAsState()
+        var tempSlsUser by remember(soulseekUser) { mutableStateOf(soulseekUser) }
+        var tempSlsPass by remember(soulseekPass) { mutableStateOf(soulseekPass) }
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text("Soulseek (FLAC Downloads)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Soulseek credentials are required for high-fidelity FLAC downloads.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = tempSlsUser,
+                    onValueChange = { tempSlsUser = it },
+                    label = { Text("Soulseek Username") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = fieldColors
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = tempSlsPass,
+                    onValueChange = { tempSlsPass = it },
+                    label = { Text("Soulseek Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = fieldColors
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        com.melodify.shared.data.storage.SoulseekSettings.saveSettings(tempSlsUser.trim(), tempSlsPass.trim())
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Save Credentials")
+                }
+            }
+        }
+        
+        Spacer(Modifier.height(20.dp))
     }
 }
