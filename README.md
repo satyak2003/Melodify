@@ -1,6 +1,7 @@
 # Melodify — Android & Desktop Music Player
 
-<img width="256" height="256" alt="melodify" src="https://github.com/user-attachments/assets/d1f06f62-3389-4b58-acc0-964a34790485" />
+<img width="1920" height="300" alt="Github-banner" src="https://github.com/user-attachments/assets/5606173c-d452-4c4e-93ee-1c39ed166c77" />
+
 
 An ad-free, open-source music player that imports your Spotify playlists and streams audio at the highest available quality via YouTube Music.
 
