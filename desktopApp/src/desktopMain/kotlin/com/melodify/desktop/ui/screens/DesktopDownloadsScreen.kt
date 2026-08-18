@@ -22,8 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.melodify.shared.domain.download.DownloadItem
 import com.melodify.shared.domain.download.DownloadQueueManager
 import com.melodify.shared.domain.download.DownloadState
-import io.kamel.image.KamelImage
-import io.kamel.image.asyncPainterResource
+import coil3.compose.AsyncImage
 
 @Composable
 fun DesktopDownloadsScreen() {
@@ -79,13 +78,10 @@ fun DesktopDownloadItemRow(item: DownloadItem) {
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val painter = asyncPainterResource(data = item.track.thumbnailUrl ?: "")
-            KamelImage(
-                resource = painter,
+            AsyncImage(
+                model = item.track.thumbnailUrl,
                 contentDescription = null,
-                modifier = Modifier.size(56.dp),
-                onLoading = { CircularProgressIndicator(modifier = Modifier.padding(16.dp)) },
-                onFailure = { /* placeholder */ }
+                modifier = Modifier.size(56.dp)
             )
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -97,6 +93,9 @@ fun DesktopDownloadItemRow(item: DownloadItem) {
                 when (val state = item.state) {
                     is DownloadState.Queued -> {
                         Text("Queued (${item.quality.name})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                    is DownloadState.Paused -> {
+                        Text("Paused", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     is DownloadState.Downloading -> {
                         LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth().height(4.dp))

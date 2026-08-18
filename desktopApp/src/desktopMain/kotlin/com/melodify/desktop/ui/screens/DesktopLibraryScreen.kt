@@ -41,7 +41,6 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
     val viewModel: LibraryViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
-    val isSpotifyConnected by viewModel.isSpotifyConnected.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
     val downloadingTracks by playerViewModel.downloadingTracks.collectAsState()
     val isOffline by com.melodify.shared.utils.NetworkMonitor.isOffline.collectAsState()
@@ -185,35 +184,20 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
                         )
                     }
 
-                    if (isSpotifyConnected) {
-                        // Sync Spotify Button
-                        IconButton(
-                            onClick = { viewModel.importSpotifyPlaylists() },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Rounded.Sync,
-                                contentDescription = "Sync Spotify",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // Link Import Button
-                        IconButton(
-                            onClick = { showImportLinkDialog = true },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Rounded.Link,
-                                contentDescription = "Import link",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        }
+                    // Link Import Button
+                    IconButton(
+                        onClick = { showImportLinkDialog = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Link,
+                            contentDescription = "Import link",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
+            }
 
             Spacer(Modifier.height(8.dp))
 
@@ -247,45 +231,6 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
 
 
             Spacer(Modifier.height(4.dp))
-
-            // Spotify connect / badge
-            if (!isSpotifyConnected) {
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = {
-                        val authUrl = viewModel.startSpotifyLogin()
-                        uriHandler.openUri(authUrl)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Icon(Icons.Rounded.Link, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Connect Spotify", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                }
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.CheckCircle,
-                        null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Spotify Connected",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
 
             // Sync YouTube Music button
             Spacer(Modifier.height(8.dp))
@@ -451,6 +396,27 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
                                     )
                                 }
                                 items(state.spotifyPlaylists) { playlist ->
+                                    LibraryPlaylistRow(
+                                        title = playlist.title,
+                                        subtitle = "${playlist.trackCount} songs",
+                                        thumbnailUrl = playlist.thumbnailUrl,
+                                        isSelected = selectedPlaylist?.id == playlist.id,
+                                        onClick = { selectedPlaylist = playlist }
+                                    )
+                                }
+                            }
+
+                            if (state.youtubePlaylists.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        "YouTube Music",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 4.dp)
+                                    )
+                                }
+                                items(state.youtubePlaylists) { playlist ->
                                     LibraryPlaylistRow(
                                         title = playlist.title,
                                         subtitle = "${playlist.trackCount} songs",

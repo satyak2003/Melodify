@@ -27,7 +27,8 @@ actual object AuthManager {
     actual val userName = _userName.asStateFlow()
     
     // Desktop App Client ID
-    private const val CLIENT_ID = "1056247604165-nqj45ueqpj6udg9d8eqgvtmcv81r02o4.apps.googleusercontent.com"
+    private const val CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE"
+    private const val CLIENT_SECRET = "YOUR_GOOGLE_CLIENT_SECRET_HERE"
     private const val REDIRECT_URI = "http://127.0.0.1:8080/callback"
 
     actual suspend fun loginWithGoogle(): GoogleTokens? = withContext(Dispatchers.IO) {
@@ -49,7 +50,9 @@ actual object AuthManager {
                     "code_challenge=$codeChallenge&" +
                     "code_challenge_method=S256"
             
-            val serverSocket = ServerSocket(8080)
+            val serverSocket = ServerSocket(8080).apply {
+                soTimeout = 60000 // 60 seconds timeout
+            }
             
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                 Desktop.getDesktop().browse(URI(authUrl))
@@ -77,7 +80,7 @@ actual object AuthManager {
             val client = HttpClient()
             val response = client.post("https://oauth2.googleapis.com/token") {
                 contentType(ContentType.Application.FormUrlEncoded)
-                setBody("client_id=$CLIENT_ID&grant_type=authorization_code&redirect_uri=$REDIRECT_URI&code=$encodedCode&code_verifier=$codeVerifier")
+                setBody("client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&grant_type=authorization_code&redirect_uri=$REDIRECT_URI&code=$encodedCode&code_verifier=$codeVerifier")
             }
             client.close()
             

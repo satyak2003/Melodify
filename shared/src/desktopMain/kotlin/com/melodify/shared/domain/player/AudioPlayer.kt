@@ -80,7 +80,7 @@ actual class AudioPlayer {
         if (fxInitialized) {
             Platform.runLater {
                 try {
-                    val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
+                    val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("yt-dlp://")) {
                         StreamProxy.getProxyUrl(url)
                     } else if (url.startsWith("file:/")) {
                         url
@@ -160,12 +160,21 @@ actual class AudioPlayer {
 
     private fun playVlc(url: String, initialSeekMs: Long) {
         try {
-            val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
+            // Bypass StreamProxy for YouTube streams to avoid 403s and chunking issues
+            val isYouTubeStream = url.contains("googlevideo.com") || url.contains("youtube.com")
+            
+            val mediaUrl = if (!isYouTubeStream && (url.startsWith("http://") || url.startsWith("https://"))) {
+                StreamProxy.getProxyUrl(url)
+            } else if (url.startsWith("yt-dlp://")) {
                 StreamProxy.getProxyUrl(url)
             } else {
                 url
             }
             val options = mutableListOf<String>()
+            options.add(":network-caching=3000") // 3 seconds network cache
+            if (isYouTubeStream) {
+                options.add(":http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+            }
             if (initialSeekMs > 0L) {
                 options.add(":start-time=${initialSeekMs / 1000f}")
                 _positionMs.value = initialSeekMs
@@ -222,7 +231,9 @@ actual class AudioPlayer {
             }
             fxMediaPlayer = null
         }
-        vlcComponent?.mediaPlayer()?.controls()?.stop()
+        try {
+            vlcComponent?.mediaPlayer()?.controls()?.stop()
+        } catch (ignored: Throwable) {}
         _isPlaying.value = false
         _isBuffering.value = false
     }
@@ -233,13 +244,18 @@ actual class AudioPlayer {
         if (fxPlayer != null) {
             Platform.runLater { fxPlayer.volume = vol.toDouble() }
         }
-        vlcComponent?.mediaPlayer()?.audio()?.setVolume((vol * 100).toInt())
+        try {
+            vlcComponent?.mediaPlayer()?.audio()?.setVolume((vol * 100).toInt())
+        } catch (ignored: Throwable) {}
     }
 
     actual fun release() {
-        stop()
+        try { stop() } catch (ignored: Throwable) {}
         scope.cancel()
-        vlcComponent?.release()
+        try { 
+            vlcComponent?.release() 
+        } catch (ignored: Throwable) {}
+        vlcComponent = null
     }
 
     private fun startFxPositionTracking() {
@@ -263,33 +279,31 @@ actual class AudioPlayer {
             }
             override fun paused(mediaPlayer: VlcMediaPlayer) {
                 _isPlaying.value = false
-                positionJob?.cancel()
             }
             override fun stopped(mediaPlayer: VlcMediaPlayer) {
                 _isPlaying.value = false
-                positionJob?.cancel()
+                _isBuffering.value = false
             }
             override fun buffering(mediaPlayer: VlcMediaPlayer, newCache: Float) {
                 _isBuffering.value = newCache < 100f
             }
             override fun error(mediaPlayer: VlcMediaPlayer) {
                 _playerError.value = "VLC playback error"
+                _isBuffering.value = false
                 _isPlaying.value = false
             }
             override fun lengthChanged(mediaPlayer: VlcMediaPlayer, newLength: Long) {
                 _durationMs.value = newLength
             }
             override fun finished(mediaPlayer: VlcMediaPlayer) {
-                if (_durationMs.value <= 0L) {
+                if (_durationMs.value <= 1000L) {
                     _playerError.value = "VLC playback error (Finished instantly)"
-                    _isPlaying.value = false
-                    _isBuffering.value = false
-                } else {
-                    _isPlaying.value = false
-                    _positionMs.value = _durationMs.value
-                    positionJob?.cancel()
-                    onTrackEnded?.invoke()
                 }
+                _isPlaying.value = false
+                _isBuffering.value = false
+                _positionMs.value = 0L
+                positionJob?.cancel()
+                onTrackEnded?.invoke()
             }
         })
     }

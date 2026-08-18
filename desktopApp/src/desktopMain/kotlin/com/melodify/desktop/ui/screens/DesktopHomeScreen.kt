@@ -33,6 +33,16 @@ import com.melodify.shared.presentation.HomeUiState
 import com.melodify.shared.presentation.HomeViewModel
 import com.melodify.shared.presentation.LibraryViewModel
 import com.melodify.shared.presentation.PlayerViewModel
+import com.melodify.shared.presentation.SleepOption
+
+import io.github.alexzhirkevich.compottie.Compottie
+import io.github.alexzhirkevich.compottie.LottieAnimation
+import io.github.alexzhirkevich.compottie.LottieCompositionSpec
+import io.github.alexzhirkevich.compottie.rememberLottieComposition
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
 
 @Composable
 fun DesktopHomeScreen(
@@ -102,41 +112,92 @@ fun DesktopHomeScreen(
                                     )
                                     .padding(24.dp)
                             ) {
+                                val lottieBytes by produceState<ByteArray?>(null) {
+                                    value = runCatching { 
+                                        val stream = object {}.javaClass.getResourceAsStream("/composeResources/com.melodify.shared.resources/files/melodify_text.json")
+                                            ?: object {}.javaClass.classLoader.getResourceAsStream("composeResources/com.melodify.shared.resources/files/melodify_text.json")
+                                        stream?.readBytes()
+                                    }.getOrNull()
+                                }
+
                                 Column(modifier = Modifier.align(Alignment.CenterStart)) {
-                                    Text(
-                                        text = "Welcome to Melodify",
-                                        style = MaterialTheme.typography.headlineLarge,
-                                        fontFamily = FontFamily.Default,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    if (lottieBytes != null) {
+                                        val composition by rememberLottieComposition(
+                                            LottieCompositionSpec.JsonString(lottieBytes!!.decodeToString())
+                                        )
+                                        if (composition != null) {
+                                            LottieAnimation(
+                                                composition = composition,
+                                                iterations = Compottie.IterateForever,
+                                                modifier = Modifier
+                                                    .height(80.dp)
+                                                    .width(400.dp)
+                                                    .scale(1.5f)
+                                                    .graphicsLayer { alpha = 0.99f }
+                                                    .drawWithContent {
+                                                        drawContent()
+                                                        drawRect(
+                                                            brush = Brush.horizontalGradient(
+                                                                colors = listOf(Color.Transparent, Color.Black),
+                                                                startX = 0f,
+                                                                endX = size.width * 0.2f
+                                                            ),
+                                                            blendMode = BlendMode.DstIn
+                                                        )
+                                                    }
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            text = "Welcome to Melodify",
+                                            style = MaterialTheme.typography.headlineLarge,
+                                            fontFamily = FontFamily.Default,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         text = "Discover trending music or play your local library.",
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                                     )
-                                }
-                                
-                                val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsState()
-                                if (sleepRemainingMs != null) {
-                                    val remainingSec = sleepRemainingMs!! / 1000
-                                    val text = "Sleep Timer: %d:%02d".format(remainingSec / 60, remainingSec % 60)
-                                    Row(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
-                                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(text, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                                    }
                                 }
                             }
                         }
                         Spacer(Modifier.height(20.dp))
+                    }
+
+                    // Sleep Timer Dedicated Card
+                    item {
+                        val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsState()
+                        if (sleepRemainingMs != null) {
+                            val remainingSec = sleepRemainingMs!! / 1000
+                            val text = "Sleep Timer Active: %02d:%02d remaining".format(remainingSec / 60, remainingSec % 60)
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        text,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(onClick = { playerViewModel.setSleepTimer(SleepOption.OFF) }) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(20.dp))
+                        }
                     }
 
                     // Hero Row: Surprise Me & Continue Listening

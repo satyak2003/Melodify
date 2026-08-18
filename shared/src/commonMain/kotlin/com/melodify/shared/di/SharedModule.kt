@@ -29,6 +29,11 @@ val sharedModule = module {
     single {
         HttpClient {
             expectSuccess = true
+            install(io.ktor.client.plugins.HttpTimeout) {
+                requestTimeoutMillis = 10000
+                connectTimeoutMillis = 10000
+                socketTimeoutMillis = 10000
+            }
             install(ContentNegotiation) {
                 json(Json {
                     ignoreUnknownKeys = true

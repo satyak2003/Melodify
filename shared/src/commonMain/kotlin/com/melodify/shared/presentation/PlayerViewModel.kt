@@ -53,6 +53,14 @@ class PlayerViewModel(
         },
         onPlaybackError = { error, track ->
             _playerState.value = PlayerState.Error(error, track)
+            // Auto-skip to next track after showing the error briefly,
+            // but stop if too many consecutive failures to prevent infinite loops
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(3000)
+                if (_playerState.value is PlayerState.Error) {
+                    playNext(isAuto = true)
+                }
+            }
         },
         onTrackEnded = { playNext(isAuto = true) },
         onBuffering = { track ->
@@ -151,12 +159,29 @@ class PlayerViewModel(
             }
         }
         
-        // Observe buffering state
+        // Observe player state from playback manager
         viewModelScope.launch {
+            var bufferJob: kotlinx.coroutines.Job? = null
             audioPlayer.isBuffering.collect { buffering ->
                 if (buffering) {
                     val current = queueManager.queue.value.currentTrack
                     _playerState.value = PlayerState.Buffering(current)
+                    
+                    // Auto-skip if buffering takes more than 30 seconds (dead URL or network issue)
+                    bufferJob?.cancel()
+                    bufferJob = launch {
+                        kotlinx.coroutines.delay(30000)
+                        if (audioPlayer.isBuffering.value) {
+                            audioPlayer.stop()
+                            val track = queueManager.queue.value.currentTrack
+                            _playerState.value = PlayerState.Error("Stream timed out", track)
+                            kotlinx.coroutines.delay(3000)
+                            playNext(isAuto = true)
+                        }
+                    }
+                } else {
+                    bufferJob?.cancel()
+                    bufferJob = null
                 }
             }
         }

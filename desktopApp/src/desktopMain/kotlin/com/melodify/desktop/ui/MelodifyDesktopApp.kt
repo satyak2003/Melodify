@@ -19,6 +19,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 
 import com.melodify.desktop.ui.theme.MelodifyDesktopTheme
 import com.melodify.desktop.ui.screens.*
@@ -57,8 +63,39 @@ fun MelodifyDesktopApp() {
                 currentScreen = DesktopScreen.NOW_PLAYING
             }
         }
+        
+        val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "aurora")
+        val auroraPhase by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                animation = androidx.compose.animation.core.tween(15000, easing = androidx.compose.animation.core.LinearEasing),
+                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "aurora_phase"
+        )
 
-        Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val auroraColor1 = Color(
+            red = (0x0F + (0x10 * auroraPhase)).toInt().coerceIn(0, 255),
+            green = (0x0A + (0x15 * auroraPhase)).toInt().coerceIn(0, 255),
+            blue = (0x20 + (0x1A * auroraPhase)).toInt().coerceIn(0, 255)
+        )
+
+        val auroraColor2 = Color(
+            red = (0x15 + (0x10 * (1f - auroraPhase))).toInt().coerceIn(0, 255),
+            green = (0x05 + (0x15 * auroraPhase)).toInt().coerceIn(0, 255),
+            blue = (0x35 + (0x10 * (1f - auroraPhase))).toInt().coerceIn(0, 255)
+        )
+
+        val backgroundGradient = Brush.verticalGradient(
+            colors = listOf(
+                auroraColor1,
+                auroraColor2,
+                Color(0xFF0A0710) // Darker base at the bottom
+            )
+        )
+
+        Column(modifier = Modifier.fillMaxSize().background(backgroundGradient)) {
             // Main area: sidebar + content
             Row(modifier = Modifier.weight(1f)) {
                 DesktopSidebar(

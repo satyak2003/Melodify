@@ -39,7 +39,31 @@ object LibraryStorage {
     fun loadLibrary(): StoredLibraryData {
         try {
             if (!libraryFile.exists()) return StoredLibraryData()
-            return json.decodeFromString(libraryFile.readText())
+            val data = json.decodeFromString<StoredLibraryData>(libraryFile.readText())
+            
+            // Migrate YouTube playlists that might have been accidentally saved in spotifyPlaylists in older versions
+            val misplacedYoutubePlaylists = data.spotifyPlaylists.filter { it.source == com.melodify.shared.domain.model.PlaylistSource.YOUTUBE }
+            if (misplacedYoutubePlaylists.isNotEmpty()) {
+                val updatedSpotify = data.spotifyPlaylists.filter { it.source != com.melodify.shared.domain.model.PlaylistSource.YOUTUBE }
+                
+                // Merge with existing youtubePlaylists to prevent duplicates by ID
+                val mergedYoutube = (data.youtubePlaylists + misplacedYoutubePlaylists).distinctBy { it.id }
+                
+                val migratedData = data.copy(
+                    spotifyPlaylists = updatedSpotify,
+                    youtubePlaylists = mergedYoutube
+                )
+                // Save the migrated data so the fix persists
+                saveLibrary(
+                    spotifyPlaylists = migratedData.spotifyPlaylists,
+                    youtubePlaylists = migratedData.youtubePlaylists,
+                    localPlaylists = migratedData.localPlaylists,
+                    likedTracks = migratedData.likedTracks,
+                    jellyfinTracks = migratedData.jellyfinTracks
+                )
+                return migratedData
+            }
+            return data
         } catch (e: Exception) {
             println("Failed to load library: ${e.message}")
             return StoredLibraryData()

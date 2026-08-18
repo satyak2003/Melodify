@@ -43,12 +43,44 @@ class MusicRepository(
         }
     }
 
-    suspend fun getStreamUrl(videoId: String): Result<String> = runCatching {
-        withContext(Dispatchers.IO) {
+    suspend fun getStreamUrl(videoId: String, fallbackTitle: String? = null, fallbackArtist: String? = null): Result<String> = runCatching {
+        // 1. Try platform-specific stream resolver first (yt-dlp on desktop)
+        val platformUrl = platformResolveStreamUrl(videoId)
+        if (platformUrl != null) return@runCatching platformUrl
+
+        // 2. Try InnerTube API directly
+        try {
             val response = innerTubeApi.getPlayerInfo(videoId)
-            innerTubeParser.parseBestStreamUrl(response) 
-                ?: throw Exception("No suitable streaming URL found for videoId: $videoId")
+            val url = innerTubeParser.parseBestStreamUrl(response)
+            if (url != null) return@runCatching url
+        } catch (e: Exception) {
+            println("InnerTubeApi failed for $videoId: ${e.message}")
         }
+        
+        // 3. Fallback: search for a standard YouTube video (e.g. lyrics video)
+        if (fallbackTitle != null) {
+            val artist = fallbackArtist ?: ""
+            val query = "$fallbackTitle $artist lyrics".trim()
+            try {
+                val searchResult = innerTubeApi.searchVideo(query)
+                val parsedResult = innerTubeParser.parseSearchResults(searchResult)
+                val standardVideoId = parsedResult.tracks.firstOrNull()?.id
+                
+                if (standardVideoId != null && standardVideoId != videoId) {
+                    // Try platform resolver for the fallback video too
+                    val platformFallback = platformResolveStreamUrl(standardVideoId)
+                    if (platformFallback != null) return@runCatching platformFallback
+
+                    val fallbackResponse = innerTubeApi.getPlayerInfo(standardVideoId)
+                    val fallbackUrl = innerTubeParser.parseBestStreamUrl(fallbackResponse)
+                    if (fallbackUrl != null) return@runCatching fallbackUrl
+                }
+            } catch (e: Exception) {
+                println("Fallback search failed: ${e.message}")
+            }
+        }
+        
+        throw Exception("No suitable streaming URL found for videoId: $videoId")
     }
 
     suspend fun getTrackDetails(videoId: String): Result<Track> = runCatching {
@@ -85,40 +117,47 @@ class MusicRepository(
                         header("Accept", "application/json")
                     }
                     if (response.status.value in 200..299) {
-                        val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(response.bodyAsText()).jsonObject
-                        val items = json["items"]?.jsonArray ?: emptyList()
-                        
-                        val pageTracks = items.mapNotNull { item ->
-                            val snippet = item.jsonObject["snippet"]?.jsonObject
-                            val contentDetails = item.jsonObject["contentDetails"]?.jsonObject
-                            val videoId = contentDetails?.get("videoId")?.jsonPrimitive?.content
-                            val title = snippet?.get("title")?.jsonPrimitive?.content ?: ""
-                            val author = snippet?.get("videoOwnerChannelTitle")?.jsonPrimitive?.content ?: "Unknown Artist"
-                            val thumbnailUrl = snippet?.get("thumbnails")?.jsonObject?.get("high")?.jsonObject?.get("url")?.jsonPrimitive?.content
-                                ?: snippet?.get("thumbnails")?.jsonObject?.get("default")?.jsonObject?.get("url")?.jsonPrimitive?.content ?: ""
-                                
-                            if (videoId != null && title.isNotBlank() && title != "Private video" && title != "Deleted video") {
-                                Track(
-                                    id = videoId,
-                                    title = title,
-                                    artists = listOf(Artist(id = author, name = author, thumbnailUrl = null)),
-                                    album = null,
-                                    thumbnailUrl = thumbnailUrl,
-                                    durationMs = 200000L, // Placeholder duration
-                                    youtubeVideoId = videoId,
-                                    source = TrackSource.YOUTUBE
-                                )
-                            } else null
+                        try {
+                            val json = Json { ignoreUnknownKeys = true }.parseToJsonElement(response.bodyAsText()).jsonObject
+                            val items = json["items"]?.jsonArray ?: emptyList()
+                            
+                            val pageTracks = items.mapNotNull { item ->
+                                val snippet = item.jsonObject["snippet"]?.jsonObject
+                                val contentDetails = item.jsonObject["contentDetails"]?.jsonObject
+                                val videoId = contentDetails?.get("videoId")?.jsonPrimitive?.content
+                                val title = snippet?.get("title")?.jsonPrimitive?.content ?: ""
+                                val author = snippet?.get("videoOwnerChannelTitle")?.jsonPrimitive?.content ?: "Unknown Artist"
+                                val thumbnailUrl = snippet?.get("thumbnails")?.jsonObject?.get("high")?.jsonObject?.get("url")?.jsonPrimitive?.content
+                                    ?: snippet?.get("thumbnails")?.jsonObject?.get("default")?.jsonObject?.get("url")?.jsonPrimitive?.content ?: ""
+                                    
+                                if (videoId != null && title.isNotBlank() && title != "Private video" && title != "Deleted video") {
+                                    Track(
+                                        id = videoId,
+                                        title = title,
+                                        artists = listOf(Artist(id = author, name = author, thumbnailUrl = null)),
+                                        album = null,
+                                        thumbnailUrl = thumbnailUrl,
+                                        durationMs = 200000L, // Placeholder duration
+                                        youtubeVideoId = videoId,
+                                        source = TrackSource.YOUTUBE
+                                    )
+                                } else null
+                            }
+                            allTracks.addAll(pageTracks)
+                            nextPageToken = json["nextPageToken"]?.jsonPrimitive?.content
+                        } catch (e: Exception) {
+                            println("JSON Parsing error in playlistItems: ${e.message}")
+                            break // Stop pagination on error
                         }
-                        allTracks.addAll(pageTracks)
-                        nextPageToken = json["nextPageToken"]?.jsonPrimitive?.content
                     } else {
+                        println("YouTube API Error in playlistItems: ${response.status.value} - ${response.bodyAsText()}")
                         break // Fallback or stop if error
                     }
                 } while (nextPageToken != null)
                 
                 client.close()
-                if (allTracks.isNotEmpty()) return@withContext allTracks
+                // If we successfully authenticated, return the tracks (even if empty) to avoid InnerTube fallback crashing on private playlists
+                return@withContext allTracks
             }
             
             // Fallback to InnerTube API (capped at 100 anonymously)

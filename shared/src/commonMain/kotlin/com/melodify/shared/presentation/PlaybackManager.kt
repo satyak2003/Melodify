@@ -82,7 +82,7 @@ class PlaybackManager(
                         track.localPath
                     } else {
                         val videoId = track.youtubeVideoId ?: track.id
-                        val res = musicRepository.getStreamUrl(videoId)
+                        val res = musicRepository.getStreamUrl(videoId, track.title, track.artists.firstOrNull()?.name)
                         if (res.isSuccess) {
                             res.getOrThrow()
                         } else {
@@ -94,7 +94,7 @@ class PlaybackManager(
                                 thumbnailUrl = track.thumbnailUrl ?: matched.thumbnailUrl
                             )
                             com.melodify.shared.data.storage.LibraryStorage.updateTrackYoutubeId(track.id, matchedId)
-                            musicRepository.getStreamUrl(activeTrack.youtubeVideoId ?: activeTrack.id).getOrThrow()
+                            musicRepository.getStreamUrl(activeTrack.youtubeVideoId ?: activeTrack.id, activeTrack.title, activeTrack.artists.firstOrNull()?.name).getOrThrow()
                         }
                     }
                 }
@@ -137,6 +137,13 @@ class PlaybackManager(
                     }
                 }
 
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                if (requestId != playbackRequestId) return@launch
+                println("Failed to stream track '${track.title}': Timeout")
+                consecutiveFailures++
+                onPlaybackError("Connection timed out. YouTube might be blocking requests.", track)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Ignore general cancellation (e.g. from playTrack being called again)
             } catch (e: Exception) {
                 if (requestId != playbackRequestId) return@launch
                 println("Failed to stream track '${track.title}': ${e.message}")
@@ -178,12 +185,12 @@ class PlaybackManager(
                     prefetchedUrl = nextTrack.localPath
                 } else {
                     val videoId = nextTrack.youtubeVideoId ?: nextTrack.id
-                    val res = musicRepository.getStreamUrl(videoId)
+                    val res = musicRepository.getStreamUrl(videoId, nextTrack.title, nextTrack.artists.firstOrNull()?.name)
                     if (res.isSuccess) {
                         prefetchedUrl = res.getOrThrow()
                     } else {
                         val matched = musicRepository.matchSpotifyTrack(nextTrack.title, nextTrack.artistNames, nextTrack.durationMs).getOrThrow()
-                        prefetchedUrl = musicRepository.getStreamUrl(matched.youtubeVideoId ?: matched.id).getOrThrow()
+                        prefetchedUrl = musicRepository.getStreamUrl(matched.youtubeVideoId ?: matched.id, nextTrack.title, nextTrack.artists.firstOrNull()?.name).getOrThrow()
                     }
                 }
             } catch (e: Exception) {
