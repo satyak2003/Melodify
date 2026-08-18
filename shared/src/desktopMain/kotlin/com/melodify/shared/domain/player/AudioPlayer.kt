@@ -80,12 +80,15 @@ actual class AudioPlayer {
         if (fxInitialized) {
             Platform.runLater {
                 try {
-                    val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("yt-dlp://")) {
+                    val isYouTubeStream = url.contains("googlevideo.com") || url.contains("youtube.com")
+                    val mediaUrl = if (!isYouTubeStream && (url.startsWith("http://") || url.startsWith("https://"))) {
                         StreamProxy.getProxyUrl(url)
                     } else if (url.startsWith("file:/")) {
                         url
                     } else {
-                        java.io.File(url).toURI().toString()
+                        // Direct URL (like youtube CDN) bypasses proxy because JavaFX supports Range natively
+                        if (url.startsWith("http://") || url.startsWith("https://")) url
+                        else java.io.File(url).toURI().toString()
                     }
 
                     val media = Media(mediaUrl)

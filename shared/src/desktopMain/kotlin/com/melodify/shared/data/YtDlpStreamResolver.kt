@@ -66,8 +66,49 @@ object YtDlpStreamResolver {
      */
     suspend fun getStreamUrl(videoId: String, preferM4a: Boolean = true): String? {
         if (!isAvailable()) return null
-        // Return a special yt-dlp protocol URL so StreamProxy will spawn
-        // yt-dlp and pipe the stream directly, bypassing YouTube's 403 Forbidden IP/UA blocks.
-        return "yt-dlp://$videoId"
+
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(15_000L) {
+                try {
+                    val formatSpec = if (preferM4a) {
+                        "bestaudio[ext=m4a]/bestaudio"
+                    } else {
+                        "bestaudio"
+                    }
+
+                    val process = ProcessBuilder(
+                        ytDlpPath ?: "yt-dlp",
+                        "-f", formatSpec,
+                        "--get-url",
+                        "--no-warnings",
+                        "--no-playlist",
+                        "https://www.youtube.com/watch?v=$videoId"
+                    )
+                        .redirectErrorStream(false)
+                        .start()
+
+                    // Read stdout for the URL
+                    val url = process.inputStream.bufferedReader().readLine()?.trim()
+
+                    // Read stderr for errors (don't block)
+                    val stderr = process.errorStream.bufferedReader().readText().trim()
+
+                    val exitCode = process.waitFor()
+
+                    if (exitCode == 0 && !url.isNullOrBlank() && url.startsWith("http")) {
+                        println("yt-dlp resolved stream URL for $videoId (${url.take(80)}...)")
+                        url
+                    } else {
+                        if (stderr.isNotBlank()) {
+                            println("yt-dlp stderr for $videoId: $stderr")
+                        }
+                        null
+                    }
+                } catch (e: Exception) {
+                    println("yt-dlp extraction failed for $videoId: ${e.message}")
+                    null
+                }
+            }
+        }
     }
 }

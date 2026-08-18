@@ -143,115 +143,58 @@ object StreamProxy {
 
             val decodedUrl = URLDecoder.decode(urlQuery, "UTF-8")
 
-            if (decodedUrl.startsWith("yt-dlp://")) {
-                val videoId = decodedUrl.substringAfter("yt-dlp://")
-                val ytDlpPath = com.melodify.shared.data.YtDlpStreamResolver.getYtDlpPath() ?: "yt-dlp"
-                
-                val process = ProcessBuilder(
-                    ytDlpPath, 
-                    "-f", "bestaudio[ext=m4a]/bestaudio", 
-                    "-o", "-", 
-                    "--no-warnings", 
-                    "--no-playlist", 
-                    "https://www.youtube.com/watch?v=$videoId"
-                )
-                    .redirectErrorStream(false)
-                    .start()
+            // Forward request upstream
+            val upstreamResponse = httpClient.get(decodedUrl) {
+                header(HttpHeaders.UserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                header(HttpHeaders.Accept, "*/*")
+                request.rangeHeader?.let { header(HttpHeaders.Range, it) }
+            }
 
-                val responseStatus = "HTTP/1.1 200 OK\r\n"
-                val headers = buildString {
-                    append(responseStatus)
-                    append("Content-Type: audio/mp4\r\n")
-                    append("Accept-Ranges: none\r\n")
-                    append("Connection: close\r\n")
-                    append("\r\n")
+            val statusCode = upstreamResponse.status
+            val contentLength = upstreamResponse.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+            val contentType = upstreamResponse.headers[HttpHeaders.ContentType] ?: "audio/mp4"
+            val contentRange = upstreamResponse.headers[HttpHeaders.ContentRange]
+            val acceptRanges = upstreamResponse.headers[HttpHeaders.AcceptRanges] ?: "bytes"
+
+            // Send response headers
+            val responseStatus = when {
+                statusCode == HttpStatusCode.PartialContent -> "HTTP/1.1 206 Partial Content\r\n"
+                statusCode == HttpStatusCode.OK -> "HTTP/1.1 200 OK\r\n"
+                else -> "HTTP/1.1 ${statusCode.value} ${statusCode.description}\r\n"
+            }
+
+            val headers = buildString {
+                append(responseStatus)
+                append("Content-Type: $contentType\r\n")
+                append("Accept-Ranges: $acceptRanges\r\n")
+                contentLength?.let { append("Content-Length: $it\r\n") }
+                contentRange?.let { append("Content-Range: $it\r\n") }
+                append("Connection: close\r\n")
+                append("\r\n")
+            }
+
+            val output = BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE)
+            output.write(headers.toByteArray(Charsets.UTF_8))
+            output.flush()
+
+            if (!request.isHead && statusCode.isSuccess()) {
+                var totalBytes = 0L
+                val channel = upstreamResponse.bodyAsChannel()
+                val buffer = ByteArray(BUFFER_SIZE)
+                while (true) {
+                    if (shutdown.get()) break
+                    val read = channel.readAvailable(buffer, 0, buffer.size)
+                    if (read == -1) break
+                    if (read == 0) continue
+                    output.write(buffer, 0, read)
+                    totalBytes += read
                 }
-
-                val output = BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE)
-                output.write(headers.toByteArray(Charsets.UTF_8))
                 output.flush()
-
-                if (!request.isHead) {
-                    var totalBytes = 0L
-                    val input = process.inputStream
-                    val buffer = ByteArray(BUFFER_SIZE)
-                    try {
-                        while (true) {
-                            if (shutdown.get()) {
-                                process.destroy()
-                                break
-                            }
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            if (read == 0) continue
-                            output.write(buffer, 0, read)
-                            totalBytes += read
-                        }
-                        output.flush()
-                    } finally {
-                        process.destroy()
-                    }
-                    _stats.update {
-                        it.copy(
-                            totalBytesProxied = it.totalBytesProxied + totalBytes,
-                            totalRequests = it.totalRequests + 1
-                        )
-                    }
-                }
-            } else {
-                // Forward request upstream
-                val upstreamResponse = httpClient.get(decodedUrl) {
-                    header(HttpHeaders.UserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    header(HttpHeaders.Accept, "*/*")
-                    request.rangeHeader?.let { header(HttpHeaders.Range, it) }
-                }
-
-                val statusCode = upstreamResponse.status
-                val contentLength = upstreamResponse.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-                val contentType = upstreamResponse.headers[HttpHeaders.ContentType] ?: "audio/mp4"
-                val contentRange = upstreamResponse.headers[HttpHeaders.ContentRange]
-                val acceptRanges = upstreamResponse.headers[HttpHeaders.AcceptRanges] ?: "bytes"
-
-                // Send response headers
-                val responseStatus = when {
-                    statusCode == HttpStatusCode.PartialContent -> "HTTP/1.1 206 Partial Content\r\n"
-                    statusCode == HttpStatusCode.OK -> "HTTP/1.1 200 OK\r\n"
-                    else -> "HTTP/1.1 ${statusCode.value} ${statusCode.description}\r\n"
-                }
-
-                val headers = buildString {
-                    append(responseStatus)
-                    append("Content-Type: $contentType\r\n")
-                    append("Accept-Ranges: $acceptRanges\r\n")
-                    contentLength?.let { append("Content-Length: $it\r\n") }
-                    contentRange?.let { append("Content-Range: $it\r\n") }
-                    append("Connection: close\r\n")
-                    append("\r\n")
-                }
-
-                val output = BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE)
-                output.write(headers.toByteArray(Charsets.UTF_8))
-                output.flush()
-
-                if (!request.isHead && statusCode.isSuccess()) {
-                    var totalBytes = 0L
-                    val channel = upstreamResponse.bodyAsChannel()
-                    val buffer = ByteArray(BUFFER_SIZE)
-                    while (true) {
-                        if (shutdown.get()) break
-                        val read = channel.readAvailable(buffer, 0, buffer.size)
-                        if (read == -1) break
-                        if (read == 0) continue
-                        output.write(buffer, 0, read)
-                        totalBytes += read
-                    }
-                    output.flush()
-                    _stats.update {
-                        it.copy(
-                            totalBytesProxied = it.totalBytesProxied + totalBytes,
-                            totalRequests = it.totalRequests + 1
-                        )
-                    }
+                _stats.update {
+                    it.copy(
+                        totalBytesProxied = it.totalBytesProxied + totalBytes,
+                        totalRequests = it.totalRequests + 1
+                    )
                 }
             }
 
