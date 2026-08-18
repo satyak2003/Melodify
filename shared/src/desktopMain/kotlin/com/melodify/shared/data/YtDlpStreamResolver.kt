@@ -77,7 +77,8 @@ object YtDlpStreamResolver {
                     }
 
                     val process = ProcessBuilder(
-                        ytDlpPath ?: "yt-dlp",
+                        "python",
+                        "-m", "yt_dlp",
                         "-f", formatSpec,
                         "--get-url",
                         "--no-warnings",
