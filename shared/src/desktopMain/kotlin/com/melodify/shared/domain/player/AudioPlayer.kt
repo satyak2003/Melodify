@@ -131,6 +131,7 @@ actual class AudioPlayer {
                     player.setOnError {
                         val err = player.error?.message ?: "JavaFX playback error"
                         println("JavaFX Media error: $err")
+                        fxMediaPlayer = null
                         if (vlcAvailable) {
                             playVlc(url, initialSeekMs)
                         } else {
