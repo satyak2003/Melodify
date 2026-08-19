@@ -2,70 +2,73 @@ package com.melodify.shared.api.jiosaavn
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+
+// --- Data Models matching sumitkolhe/jiosaavn-api ---
+@Serializable
+data class JioSaavnSearchResponse(val data: JioSaavnSearchData? = null)
+
+@Serializable
+data class JioSaavnSearchData(val results: List<JioSaavnTrack>? = null)
+
+@Serializable
+data class JioSaavnTrack(
+    val id: String,
+    val name: String,
+    @SerialName("downloadUrl") val downloadUrls: List<DownloadUrl>? = null
+)
+
+@Serializable
+data class DownloadUrl(val quality: String, val url: String)
 
 object JioSaavnApi {
     private val client = HttpClient()
     private val json = Json { ignoreUnknownKeys = true }
+    
+    // NOTE: You must deploy your own instance of sumitkolhe/jiosaavn-api on Vercel 
+    // and replace this URL with your deployment URL to avoid rate limits!
+    // Example: "https://your-deployed-api.vercel.app/api"
+    private const val BASE_URL = "https://saavn.dev/api"
 
     suspend fun getStreamUrl(title: String, artist: String): String? = withContext(Dispatchers.IO) {
         try {
-            val query = "$title $artist".trim().replace(" ", "%20")
-            val searchUrl = "https://www.jiosaavn.com/api.php?__call=autocomplete.get&_format=json&_marker=0&cc=in&includeMetaTags=1&query=$query"
-            
-            val searchResponse = client.get(searchUrl) {
-                header("User-Agent", "Mozilla/5.0")
+            val query = "$title $artist".trim()
+            val response = client.get("$BASE_URL/search/songs") {
+                parameter("query", query)
             }
             
-            val searchJson = json.parseToJsonElement(searchResponse.bodyAsText()).jsonObject
-            val songs = searchJson["songs"]?.jsonObject?.get("data")?.jsonArray
+            val searchResponse = json.decodeFromString<JioSaavnSearchResponse>(response.bodyAsText())
+            val results = searchResponse.data?.results
             
-            if (songs.isNullOrEmpty()) {
-                println("JioSaavn: No results found for '$title $artist'")
+            if (results.isNullOrEmpty()) {
+                println("JioSaavn API: No results found for '$query'")
                 return@withContext null
             }
             
-            val firstSong = songs.first().jsonObject
-            val songId = firstSong["id"]?.jsonPrimitive?.content ?: return@withContext null
+            val topTrack = results.first()
+            val downloadUrls = topTrack.downloadUrls
             
-            println("JioSaavn: Found match for '$title' -> ID: $songId")
-            
-            val detailsUrl = "https://www.jiosaavn.com/api.php?__call=song.getDetails&cc=in&_marker=0%3F_marker%3D0&_format=json&pids=$songId"
-            val detailsResponse = client.get(detailsUrl) {
-                header("User-Agent", "Mozilla/5.0")
+            if (downloadUrls.isNullOrEmpty()) {
+                println("JioSaavn API: No download URLs available for '${topTrack.name}'")
+                return@withContext null
             }
             
-            val detailsJson = json.parseToJsonElement(detailsResponse.bodyAsText()).jsonObject
-            val songDetails = detailsJson[songId]?.jsonObject
-            val mediaUrl = songDetails?.get("media_preview_url")?.jsonPrimitive?.content
-            
-            if (mediaUrl != null) {
-                // The preview URL is actually the full song at 96kbps. 
-                // Verify the CDN isn't rate-limiting or blocking us (e.g. 403/429)
-                val checkResponse = client.get(mediaUrl) {
-                    header("User-Agent", "Mozilla/5.0")
-                    header("Range", "bytes=0-100")
-                }
+            // Try to find the 320kbps link, fallback to whatever is highest/last
+            val bestUrl = downloadUrls.find { it.quality == "320kbps" }?.url 
+                ?: downloadUrls.last().url
                 
-                if (checkResponse.status.value in 200..299) {
-                    println("JioSaavn: Stream is playable, returning URL for ID: $songId")
-                    return@withContext mediaUrl
-                } else {
-                    println("JioSaavn: CDN blocked the stream (Status ${checkResponse.status.value}), falling back to YouTube")
-                    return@withContext null
-                }
-            }
-            null
+            println("JioSaavn API: Found 320kbps stream for '${topTrack.name}' -> ID: ${topTrack.id}")
+            return@withContext bestUrl
+            
         } catch (e: Exception) {
-            println("JioSaavn Error: ${e.message}")
+            println("JioSaavn API Error: ${e.message}")
             null
         }
     }
