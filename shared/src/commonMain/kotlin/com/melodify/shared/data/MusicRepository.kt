@@ -55,7 +55,15 @@ class MusicRepository(
             }
         }
 
-        // 2. Try NewPipe Extractor (Works on Android + Desktop, handles cipher cracking)
+        // 2. Try Piped API (Community hosted YouTube wrapper, avoids cipher decryption locally)
+        try {
+            val pipedUrl = com.melodify.shared.api.piped.PipedApi.getStreamUrl(videoId)
+            if (pipedUrl != null) return@runCatching pipedUrl
+        } catch (e: Exception) {
+            println("Piped API failed: ${e.message}")
+        }
+
+        // 3. Try NewPipe Extractor (Works on Android + Desktop, handles cipher cracking natively)
         try {
             val newPipeUrl = NewPipeStreamResolver.getStreamUrl(videoId, preferM4a = true)
             if (newPipeUrl != null) return@runCatching newPipeUrl
@@ -86,6 +94,10 @@ class MusicRepository(
                 val standardVideoId = parsedResult.tracks.firstOrNull()?.id
                 
                 if (standardVideoId != null && standardVideoId != videoId) {
+                    // Try Piped API for the fallback video
+                    val pipedFallback = com.melodify.shared.api.piped.PipedApi.getStreamUrl(standardVideoId)
+                    if (pipedFallback != null) return@runCatching pipedFallback
+
                     // Try NewPipe for the fallback video
                     val newPipeFallback = NewPipeStreamResolver.getStreamUrl(standardVideoId, preferM4a = true)
                     if (newPipeFallback != null) return@runCatching newPipeFallback

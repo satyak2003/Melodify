@@ -80,12 +80,15 @@ object RecommendationEngine {
             if (recentIndex in 0..4) score -= 3.0 // just played, deprioritize
             else if (recentIndex in 5..15) score -= 1.0 // somewhat recent
             
+            // Add slight randomization once per track, so sorting remains stable and doesn't violate Comparator contract
+            score += Math.random() * 2.0
+            
             track to score
         }
 
-        // Sort by score descending, add some randomness
+        // Sort by score descending
         return scored
-            .sortedByDescending { it.second + (Math.random() * 2.0) } // slight randomization
+            .sortedByDescending { it.second } 
             .take(count)
             .map { it.first }
     }
