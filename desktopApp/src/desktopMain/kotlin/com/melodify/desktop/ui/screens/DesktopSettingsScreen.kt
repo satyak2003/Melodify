@@ -26,6 +26,15 @@ import com.melodify.shared.presentation.LibraryViewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.melodify.shared.data.storage.YouTubeAuthManager
+import com.melodify.shared.data.storage.SupabaseAuthManager
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import javax.imageio.ImageIO
+import androidx.compose.ui.graphics.Brush
 
 @Composable
 fun DesktopSettingsScreen() {
@@ -57,10 +66,13 @@ fun DesktopSettingsScreen() {
             }
             Spacer(Modifier.height(32.dp))
 
+            DesktopSettingsMenuCategory("PROFILE", "Profile", Icons.Rounded.AccountCircle, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("IMPORT", "Music Import", Icons.Rounded.LibraryMusic, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("ACCOUNTS", "External Audio", Icons.Rounded.Link, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("PLAYBACK", "Playback", Icons.Rounded.PlayCircle, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("SOCIAL", "Social & Party", Icons.Rounded.Group, selectedCategory) { selectedCategory = it }
+            DesktopSettingsMenuCategory("DOWNLOADS", "Downloads", Icons.Rounded.Download, selectedCategory) { selectedCategory = it }
+            DesktopSettingsMenuCategory("ABOUT", "About", Icons.Rounded.Info, selectedCategory) { selectedCategory = it }
         }
 
         // RIGHT PANE: Content Area
@@ -76,10 +88,13 @@ fun DesktopSettingsScreen() {
                     .padding(32.dp)
             ) {
                 when (selectedCategory) {
+                    "PROFILE" -> DesktopProfileSettingsSection()
                     "IMPORT" -> DesktopImportSettingsSection(libraryViewModel)
                     "ACCOUNTS" -> DesktopExternalAudioSettingsSection()
                     "PLAYBACK" -> DesktopPlaybackSettingsSection()
                     "SOCIAL" -> DesktopSocialSettingsSection()
+                    "DOWNLOADS" -> DesktopDownloadsSettingsSection()
+                    "ABOUT" -> DesktopAboutSettingsSection()
                 }
             }
         }
@@ -315,6 +330,165 @@ fun DesktopSocialSettingsSection() {
                         Text("Join")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun DesktopProfileSettingsSection() {
+    val currentUser by SupabaseAuthManager.currentUser.collectAsState()
+    val isMelodifyLoggedIn = currentUser != null
+    val isYtLoggedIn by YouTubeAuthManager.isLoggedIn.collectAsState()
+    val ytAccountName by YouTubeAuthManager.userAccountName.collectAsState()
+    val uriHandler = LocalUriHandler.current
+
+    var showCookieDialog by remember { mutableStateOf(false) }
+    var cookieInput by remember { mutableStateOf("") }
+
+    Text("Cloud Profile", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    Spacer(Modifier.height(24.dp))
+
+    // Melodify Account Card
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+            Spacer(Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                if (isMelodifyLoggedIn) {
+                    Text("Logged in as", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(currentUser?.email ?: "User", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                } else {
+                    Text("Sync Across Devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Sign in to backup your library.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            
+            if (isMelodifyLoggedIn) {
+                OutlinedButton(onClick = { SupabaseAuthManager.logout() }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Text("Sign Out")
+                }
+            } else {
+                Button(onClick = { uriHandler.openUri("https://melodify-backend-2469.onrender.com/login") }) {
+                    Text("Log In")
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(24.dp))
+    Text("Connected Services", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    Spacer(Modifier.height(16.dp))
+
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("YouTube Music", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(if (isYtLoggedIn) "Connected as $ytAccountName" else "Not Connected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (isYtLoggedIn) {
+                    OutlinedButton(onClick = { YouTubeAuthManager.logout() }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                        Text("Disconnect")
+                    }
+                } else {
+                    Button(onClick = { showCookieDialog = !showCookieDialog }) {
+                        Text("Connect")
+                    }
+                }
+            }
+
+            if (showCookieDialog && !isYtLoggedIn) {
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = cookieInput,
+                    onValueChange = { cookieInput = it },
+                    label = { Text("Paste SAPISID Cookie Header") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        if (cookieInput.isNotBlank()) {
+                            YouTubeAuthManager.loginWithCookies(cookieInput)
+                            cookieInput = ""
+                            showCookieDialog = false
+                        }
+                    }, 
+                    enabled = cookieInput.isNotBlank(),
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Save")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DesktopDownloadsSettingsSection() {
+    Text("Downloads", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    Spacer(Modifier.height(24.dp))
+    
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Text("Offline Music", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text("Your downloaded tracks will appear here in future updates.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+fun DesktopAboutSettingsSection() {
+    val uriHandler = LocalUriHandler.current
+    val githubUrl = "https://github.com/satyak2003"
+    
+    val logoBitmap = remember {
+        runCatching {
+            val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.png")
+            if (stream != null) ImageIO.read(stream).toComposeImageBitmap() else null
+        }.getOrNull()
+    }
+
+    Text("About", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+    Spacer(Modifier.height(24.dp))
+
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary))),
+                contentAlignment = Alignment.Center
+            ) {
+                if (logoBitmap != null) {
+                    Image(bitmap = logoBitmap, contentDescription = "Melodify Logo", modifier = Modifier.fillMaxSize().padding(8.dp), contentScale = ContentScale.Fit)
+                } else {
+                    Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(48.dp))
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Text("Melodify", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text("v1.0.0 • Desktop Edition", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "A modern, ad-free Kotlin Multiplatform music player with Spotify library synchronization, YouTube Music streaming, offline audio downloads, and Discord Rich Presence.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = { uriHandler.openUri(githubUrl) }) {
+                Icon(Icons.Rounded.Code, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Visit GitHub Profile")
             }
         }
     }

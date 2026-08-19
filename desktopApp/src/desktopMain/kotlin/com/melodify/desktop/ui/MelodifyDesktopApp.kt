@@ -32,10 +32,18 @@ import com.melodify.shared.domain.model.currentTrack
 import com.melodify.shared.presentation.PlayerViewModel
 import org.koin.compose.viewmodel.koinViewModel
 
+import androidx.compose.ui.window.WindowScope
+import androidx.compose.foundation.window.WindowDraggableArea
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.Image
+
 enum class DesktopScreen { HOME, SEARCH, LIBRARY, NOW_PLAYING, PROFILE, SETTINGS, ABOUT, DOWNLOADS }
 
 @Composable
-fun MelodifyDesktopApp() {
+fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, onMaximize: () -> Unit) {
     MelodifyDesktopTheme {
         val playerViewModel: PlayerViewModel = koinViewModel()
         val libraryViewModel: com.melodify.shared.presentation.LibraryViewModel = koinViewModel()
@@ -76,26 +84,56 @@ fun MelodifyDesktopApp() {
         )
 
         val auroraColor1 = Color(
-            red = (0x0F + (0x10 * auroraPhase)).toInt().coerceIn(0, 255),
-            green = (0x0A + (0x15 * auroraPhase)).toInt().coerceIn(0, 255),
-            blue = (0x20 + (0x1A * auroraPhase)).toInt().coerceIn(0, 255)
+            red = (0x00 + (0x10 * auroraPhase)).toInt().coerceIn(0, 255),
+            green = (0xFF + (-0x44 * auroraPhase)).toInt().coerceIn(0, 255), // Cyan leaning
+            blue = (0xAA + (0x55 * auroraPhase)).toInt().coerceIn(0, 255)
         )
 
         val auroraColor2 = Color(
-            red = (0x15 + (0x10 * (1f - auroraPhase))).toInt().coerceIn(0, 255),
-            green = (0x05 + (0x15 * auroraPhase)).toInt().coerceIn(0, 255),
-            blue = (0x35 + (0x10 * (1f - auroraPhase))).toInt().coerceIn(0, 255)
+            red = (0xAA + (0x55 * (1f - auroraPhase))).toInt().coerceIn(0, 255), // Magenta leaning
+            green = (0x00 + (0x44 * auroraPhase)).toInt().coerceIn(0, 255),
+            blue = (0xFF + (-0x22 * (1f - auroraPhase))).toInt().coerceIn(0, 255)
         )
 
         val backgroundGradient = Brush.verticalGradient(
             colors = listOf(
-                auroraColor1,
-                auroraColor2,
-                Color(0xFF0A0710) // Darker base at the bottom
+                auroraColor1.copy(alpha = 0.2f),
+                auroraColor2.copy(alpha = 0.1f),
+                Color.Black,
+                Color.Black
             )
         )
 
-        Column(modifier = Modifier.fillMaxSize().background(backgroundGradient)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black)
+                .background(backgroundGradient)
+        ) {
+            
+            // Custom Title Bar
+            WindowDraggableArea {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(40.dp).background(Color.Black.copy(alpha = 0.3f)),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(Modifier.width(16.dp))
+                    Text("Melodify", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                    Spacer(Modifier.weight(1f))
+                    // Window controls (Windows style: top right)
+                    IconButton(onClick = onMinimize, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.Remove, "Minimize", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    }
+                    IconButton(onClick = onMaximize, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.CropSquare, "Maximize", tint = Color.Gray, modifier = Modifier.size(14.dp))
+                    }
+                    IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.Close, "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+
             // Main area: sidebar + content
             Row(modifier = Modifier.weight(1f)) {
                 DesktopSidebar(
@@ -112,10 +150,8 @@ fun MelodifyDesktopApp() {
                         DesktopScreen.SEARCH -> DesktopSearchScreen(playerViewModel)
                         DesktopScreen.LIBRARY -> DesktopLibraryScreen(playerViewModel)
                         DesktopScreen.NOW_PLAYING -> DesktopNowPlayingScreen(playerViewModel)
-                        DesktopScreen.DOWNLOADS -> DesktopDownloadsScreen()
-                        DesktopScreen.PROFILE -> DesktopProfileScreen()
                         DesktopScreen.SETTINGS -> DesktopSettingsScreen()
-                        DesktopScreen.ABOUT -> DesktopAboutScreen()
+                        else -> { }
                     }
                 }
             }
@@ -136,24 +172,27 @@ fun DesktopSidebar(
     onNavigate: (DesktopScreen) -> Unit,
     hasTrack: Boolean
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    
+    val sidebarWidth by animateDpAsState(
+        targetValue = if (isHovered) 220.dp else 72.dp,
+        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow)
+    )
+
     Column(
         modifier = Modifier
-            .width(220.dp)
+            .width(sidebarWidth)
             .fillMaxHeight()
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
-                    )
-                )
-            )
-            .padding(16.dp)
+            .background(Color.Black.copy(alpha = 0.5f))
+            .padding(vertical = 16.dp, horizontal = 12.dp)
+            .hoverable(interactionSource = interactionSource)
     ) {
         // Logo
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 32.dp, top = 8.dp)
+            modifier = Modifier.padding(bottom = 32.dp, top = 8.dp).fillMaxWidth(),
+            horizontalArrangement = if (isHovered) Arrangement.Start else Arrangement.Center
         ) {
             val logoBitmap = remember {
                 runCatching {
@@ -163,7 +202,7 @@ fun DesktopSidebar(
             }
 
             if (logoBitmap != null) {
-                androidx.compose.foundation.Image(
+                Image(
                     bitmap = logoBitmap,
                     contentDescription = "Melodify Logo",
                     modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
@@ -177,33 +216,38 @@ fun DesktopSidebar(
                     modifier = Modifier.size(32.dp)
                 )
             }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                "Melodify",
-                style = MaterialTheme.typography.headlineSmall,
-                fontFamily = FontFamily.Default, // Clean default sans-serif font
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            if (isHovered) {
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Melodify",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = FontFamily.Default, // Clean default sans-serif font
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         // Nav items
         SidebarNavItem(
             icon = Icons.Rounded.Home,
             label = "Home",
-            selected = currentScreen == DesktopScreen.HOME
+            selected = currentScreen == DesktopScreen.HOME,
+            isExpanded = isHovered
         ) { onNavigate(DesktopScreen.HOME) }
 
         SidebarNavItem(
             icon = Icons.Rounded.Search,
             label = "Search",
-            selected = currentScreen == DesktopScreen.SEARCH
+            selected = currentScreen == DesktopScreen.SEARCH,
+            isExpanded = isHovered
         ) { onNavigate(DesktopScreen.SEARCH) }
 
         SidebarNavItem(
             icon = Icons.Rounded.LibraryMusic,
             label = "Your Library",
-            selected = currentScreen == DesktopScreen.LIBRARY
+            selected = currentScreen == DesktopScreen.LIBRARY,
+            isExpanded = isHovered
         ) { onNavigate(DesktopScreen.LIBRARY) }
 
         // Now Playing — only shown when a track is active
@@ -214,7 +258,8 @@ fun DesktopSidebar(
             SidebarNavItem(
                 icon = Icons.Rounded.Equalizer,
                 label = "Now Playing",
-                selected = currentScreen == DesktopScreen.NOW_PLAYING
+                selected = currentScreen == DesktopScreen.NOW_PLAYING,
+                isExpanded = isHovered
             ) { onNavigate(DesktopScreen.NOW_PLAYING) }
         }
 
@@ -223,25 +268,11 @@ fun DesktopSidebar(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         Spacer(Modifier.height(8.dp))
         SidebarNavItem(
-            icon = Icons.Rounded.AccountCircle,
-            label = "Profile",
-            selected = currentScreen == DesktopScreen.PROFILE
-        ) { onNavigate(DesktopScreen.PROFILE) }
-        SidebarNavItem(
-            icon = Icons.Rounded.Download,
-            label = "Downloads",
-            selected = currentScreen == DesktopScreen.DOWNLOADS
-        ) { onNavigate(DesktopScreen.DOWNLOADS) }
-        SidebarNavItem(
             icon = Icons.Rounded.Settings,
             label = "Settings",
-            selected = currentScreen == DesktopScreen.SETTINGS
+            selected = currentScreen == DesktopScreen.SETTINGS,
+            isExpanded = isHovered
         ) { onNavigate(DesktopScreen.SETTINGS) }
-        SidebarNavItem(
-            icon = Icons.Rounded.Info,
-            label = "About",
-            selected = currentScreen == DesktopScreen.ABOUT
-        ) { onNavigate(DesktopScreen.ABOUT) }
     }
 }
 
@@ -251,6 +282,7 @@ fun SidebarNavItem(
     icon: ImageVector,
     label: String,
     selected: Boolean,
+    isExpanded: Boolean,
     onClick: () -> Unit
 ) {
     val bgColor = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
@@ -259,20 +291,23 @@ fun SidebarNavItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp)
+            .padding(vertical = 4.dp)
             .background(bgColor, RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (isExpanded) Arrangement.Start else Arrangement.Center
     ) {
-        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(12.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = contentColor,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-        )
+        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
+        if (isExpanded) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+            )
+        }
     }
 }
 

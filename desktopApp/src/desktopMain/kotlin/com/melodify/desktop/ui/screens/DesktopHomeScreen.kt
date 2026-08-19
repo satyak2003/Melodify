@@ -96,20 +96,12 @@ fun DesktopHomeScreen(
                                 .height(160.dp),
                             shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                                containerColor = Color.Transparent
                             )
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(
-                                                MaterialTheme.colorScheme.primaryContainer,
-                                                MaterialTheme.colorScheme.surfaceVariant
-                                            )
-                                        )
-                                    )
                                     .padding(24.dp)
                             ) {
                                 val lottieBytes by produceState<ByteArray?>(null) {

@@ -44,11 +44,15 @@ class MusicRepository(
     }
 
     suspend fun getStreamUrl(videoId: String, fallbackTitle: String? = null, fallbackArtist: String? = null): Result<String> = runCatching {
-        // 1. Try platform-specific stream resolver first (yt-dlp on desktop)
-        val platformUrl = platformResolveStreamUrl(videoId)
-        if (platformUrl != null) return@runCatching platformUrl
+        // 1. Try NewPipe Extractor (Works on Android + Desktop, handles cipher cracking)
+        try {
+            val newPipeUrl = NewPipeStreamResolver.getStreamUrl(videoId, preferM4a = true)
+            if (newPipeUrl != null) return@runCatching newPipeUrl
+        } catch (e: Exception) {
+            println("NewPipe failed for $videoId: ${e.message}")
+        }
 
-        // 2. Try InnerTube API directly
+        // 2. Try InnerTube API directly (may work for some videos)
         try {
             val response = innerTubeApi.getPlayerInfo(videoId)
             val url = innerTubeParser.parseBestStreamUrl(response)
@@ -56,8 +60,12 @@ class MusicRepository(
         } catch (e: Exception) {
             println("InnerTubeApi failed for $videoId: ${e.message}")
         }
+
+        // 3. Try platform-specific stream resolver as fallback (yt-dlp on desktop)
+        val platformUrl = platformResolveStreamUrl(videoId)
+        if (platformUrl != null) return@runCatching platformUrl
         
-        // 3. Fallback: search for a standard YouTube video (e.g. lyrics video)
+        // 4. Fallback: search for an alternative video ID and try NewPipe again
         if (fallbackTitle != null) {
             val artist = fallbackArtist ?: ""
             val query = "$fallbackTitle $artist lyrics".trim()
@@ -67,13 +75,13 @@ class MusicRepository(
                 val standardVideoId = parsedResult.tracks.firstOrNull()?.id
                 
                 if (standardVideoId != null && standardVideoId != videoId) {
-                    // Try platform resolver for the fallback video too
+                    // Try NewPipe for the fallback video
+                    val newPipeFallback = NewPipeStreamResolver.getStreamUrl(standardVideoId, preferM4a = true)
+                    if (newPipeFallback != null) return@runCatching newPipeFallback
+
+                    // Try platform resolver for the fallback video
                     val platformFallback = platformResolveStreamUrl(standardVideoId)
                     if (platformFallback != null) return@runCatching platformFallback
-
-                    val fallbackResponse = innerTubeApi.getPlayerInfo(standardVideoId)
-                    val fallbackUrl = innerTubeParser.parseBestStreamUrl(fallbackResponse)
-                    if (fallbackUrl != null) return@runCatching fallbackUrl
                 }
             } catch (e: Exception) {
                 println("Fallback search failed: ${e.message}")

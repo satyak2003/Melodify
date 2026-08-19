@@ -21,13 +21,27 @@ fun main() = application {
         } else null
     }.getOrNull()
 
+    val windowState = rememberWindowState(width = 1280.dp, height = 820.dp)
+
     Window(
         onCloseRequest = ::exitApplication,
         title = "Melodify",
         icon = iconPainter,
-        state = rememberWindowState(width = 1280.dp, height = 820.dp)
+        state = windowState,
+        undecorated = true,
+        transparent = true
     ) {
-        MelodifyDesktopApp()
+        MelodifyDesktopApp(
+            onClose = ::exitApplication,
+            onMinimize = { windowState.isMinimized = true },
+            onMaximize = {
+                windowState.placement = if (windowState.placement == WindowPlacement.Maximized) {
+                    WindowPlacement.Floating
+                } else {
+                    WindowPlacement.Maximized
+                }
+            }
+        )
     }
 }
 

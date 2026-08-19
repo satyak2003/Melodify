@@ -66,6 +66,9 @@ kotlin {
 
                 // Lottie Compose (Compottie)
                 api(libs.compottie)
+
+                // NewPipe Extractor for YouTube stream resolution (cipher cracking)
+                implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.3")
             }
         }
 
