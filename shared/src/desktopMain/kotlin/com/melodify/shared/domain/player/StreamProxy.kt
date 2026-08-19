@@ -52,6 +52,7 @@ object StreamProxy {
     private var acceptThread: Thread? = null
     private val activeConnections = AtomicInteger(0)
     private val shutdown = AtomicBoolean(false)
+    private val urlMap = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     // HTTP Client for upstream connections with connection pooling
     private val httpClient = HttpClient(CIO) {
@@ -104,8 +105,9 @@ object StreamProxy {
 
     fun getProxyUrl(targetUrl: String): String {
         val port = start()
-        val encoded = URLEncoder.encode(targetUrl, "UTF-8")
-        return "http://$PROXY_HOST:$port/stream.m4a?url=$encoded"
+        val id = java.util.UUID.randomUUID().toString()
+        urlMap[id] = targetUrl
+        return "http://$PROXY_HOST:$port/$id.m4a"
     }
 
     private fun isRunning(): Boolean {
@@ -137,20 +139,24 @@ object StreamProxy {
             // Read request
             val request = readRequest(socket) ?: return@withContext
 
-            // Parse target URL from query
-            val urlQuery = request.targetUrl.substringAfter("url=", "")
-            if (urlQuery.isEmpty()) return@withContext
-
-            val decodedUrl = URLDecoder.decode(urlQuery, "UTF-8")
+            // Parse ID from path (e.g. /123e4567-e89b-12d3-a456-426614174000.m4a)
+            val path = request.targetUrl.substringBefore("?")
+            val id = path.substringAfterLast("/").removeSuffix(".m4a")
+            val targetUrl = urlMap[id] ?: return@withContext
 
             // Forward request upstream
-            val upstreamResponse = httpClient.get(decodedUrl) {
+            val upstreamResponse = httpClient.get(targetUrl) {
                 header(HttpHeaders.UserAgent, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 header(HttpHeaders.Accept, "*/*")
                 request.rangeHeader?.let { header(HttpHeaders.Range, it) }
             }
 
             val statusCode = upstreamResponse.status
+            if (!statusCode.isSuccess() && statusCode != HttpStatusCode.PartialContent) {
+                println("StreamProxy upstream error: $statusCode")
+                return@withContext // Drops connection, forces JavaFX to trigger setOnError
+            }
+
             val contentLength = upstreamResponse.headers[HttpHeaders.ContentLength]?.toLongOrNull()
             val contentType = upstreamResponse.headers[HttpHeaders.ContentType] ?: "audio/mp4"
             val contentRange = upstreamResponse.headers[HttpHeaders.ContentRange]
