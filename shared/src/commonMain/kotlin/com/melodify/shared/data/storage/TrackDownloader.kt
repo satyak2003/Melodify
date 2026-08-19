@@ -54,14 +54,22 @@ object TrackDownloader {
             var activeTrack = track
             val videoId = track.youtubeVideoId ?: track.id
             val streamUrl = try {
-                musicRepository.getStreamUrl(videoId).getOrThrow()
+                musicRepository.getStreamUrl(
+                    videoId, 
+                    fallbackTitle = activeTrack.title, 
+                    fallbackArtist = activeTrack.artists.firstOrNull()?.name
+                ).getOrThrow()
             } catch (e: Exception) {
                 val matched = musicRepository.matchSpotifyTrack(track.title, track.artistNames, track.durationMs).getOrThrow()
                 activeTrack = track.copy(
                     youtubeVideoId = matched.youtubeVideoId ?: matched.id,
                     thumbnailUrl = track.thumbnailUrl ?: matched.thumbnailUrl
                 )
-                musicRepository.getStreamUrl(activeTrack.youtubeVideoId ?: activeTrack.id).getOrThrow()
+                musicRepository.getStreamUrl(
+                    activeTrack.youtubeVideoId ?: activeTrack.id,
+                    fallbackTitle = activeTrack.title,
+                    fallbackArtist = activeTrack.artists.firstOrNull()?.name
+                ).getOrThrow()
             }
             
             return@runCatching downloadFromUrl(activeTrack, streamUrl, targetFile, onProgress)

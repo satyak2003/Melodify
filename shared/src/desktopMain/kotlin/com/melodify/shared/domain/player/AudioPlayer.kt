@@ -81,14 +81,14 @@ actual class AudioPlayer {
             Platform.runLater {
                 try {
                     // Route ALL remote streams through the local StreamProxy.
-                    // This strips confusing CDN parameters and serves a clean .m4a URL
-                    // with proper Content-Type headers that JavaFX understands.
+                    // This fixes CDN errors (like 429s due to missing User-Agent, or complex parameters)
+                    // by downloading via Ktor and serving a clean .m4a URL with proper headers to JavaFX.
                     val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
                         StreamProxy.getProxyUrl(url)
                     } else if (url.startsWith("file:/")) {
                         url
                     } else {
-                        java.io.File(url).toURI().toString()
+                        url
                     }
 
                     val media = Media(mediaUrl)

@@ -44,7 +44,18 @@ class MusicRepository(
     }
 
     suspend fun getStreamUrl(videoId: String, fallbackTitle: String? = null, fallbackArtist: String? = null): Result<String> = runCatching {
-        // 1. Try NewPipe Extractor (Works on Android + Desktop, handles cipher cracking)
+        // 1. Try JioSaavn First (Most stable, 320kbps MP4 direct streams)
+        if (fallbackTitle != null) {
+            val artist = fallbackArtist ?: ""
+            try {
+                val saavnUrl = com.melodify.shared.api.jiosaavn.JioSaavnApi.getStreamUrl(fallbackTitle, artist)
+                if (saavnUrl != null) return@runCatching saavnUrl
+            } catch (e: Exception) {
+                println("JioSaavn fetch failed: ${e.message}")
+            }
+        }
+
+        // 2. Try NewPipe Extractor (Works on Android + Desktop, handles cipher cracking)
         try {
             val newPipeUrl = NewPipeStreamResolver.getStreamUrl(videoId, preferM4a = true)
             if (newPipeUrl != null) return@runCatching newPipeUrl
