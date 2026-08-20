@@ -92,7 +92,7 @@ class MusicRepository(
         // 4. Fallback: search for an alternative video ID and try NewPipe again
         if (fallbackTitle != null) {
             val artist = fallbackArtist ?: ""
-            val query = "$fallbackTitle $artist lyrics".trim()
+            val query = "$fallbackTitle $artist official audio".trim()
             try {
                 val searchResult = innerTubeApi.searchVideo(query)
                 val parsedResult = innerTubeParser.parseSearchResults(searchResult)
