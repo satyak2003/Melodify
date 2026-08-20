@@ -48,7 +48,7 @@ import androidx.compose.foundation.Image
 enum class DesktopScreen { HOME, SEARCH, LIBRARY, NOW_PLAYING, PROFILE, SETTINGS, ABOUT, DOWNLOADS }
 
 @Composable
-fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, onMaximize: () -> Unit) {
+fun WindowScope.MelodifyDesktopApp(isMaximized: Boolean, onClose: () -> Unit, onMinimize: () -> Unit, onMaximize: () -> Unit) {
     MelodifyDesktopTheme {
         val playerViewModel: PlayerViewModel = koinViewModel()
         val libraryViewModel: com.melodify.shared.presentation.LibraryViewModel = koinViewModel()
@@ -57,6 +57,7 @@ fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, 
 
         var currentScreen by remember { mutableStateOf(DesktopScreen.HOME) }
         var previousScreen by remember { mutableStateOf(DesktopScreen.HOME) }
+        var settingsInitialCategory by remember { mutableStateOf("PROFILE") }
         val hasTrack = playerState.currentTrack != null
 
         fun navigateTo(screen: DesktopScreen) {
@@ -109,13 +110,18 @@ fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, 
             )
         )
 
-        Column(
+        androidx.compose.material3.Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.Black)
-                .background(backgroundGradient)
+                .clip(RoundedCornerShape(8.dp)),
+            color = Color.Black,
+            contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(backgroundGradient)
+            ) {
             
             // Custom Title Bar
             WindowDraggableArea {
@@ -131,7 +137,11 @@ fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, 
                         Icon(Icons.Rounded.Remove, "Minimize", tint = Color.Gray, modifier = Modifier.size(16.dp))
                     }
                     IconButton(onClick = onMaximize, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Rounded.CropSquare, "Maximize", tint = Color.Gray, modifier = Modifier.size(14.dp))
+                        if (isMaximized) {
+                            Icon(Icons.Rounded.FilterNone, "Restore Down", tint = Color.Gray, modifier = Modifier.size(12.dp))
+                        } else {
+                            Icon(Icons.Rounded.CropSquare, "Maximize", tint = Color.Gray, modifier = Modifier.size(14.dp))
+                        }
                     }
                     IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Rounded.Close, "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
@@ -168,11 +178,19 @@ fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, 
                         }
                     ) { screen ->
                         when (screen) {
-                            DesktopScreen.HOME -> DesktopHomeScreen(playerViewModel = playerViewModel, libraryViewModel = libraryViewModel, homeViewModel = homeViewModel)
+                            DesktopScreen.HOME -> DesktopHomeScreen(
+                                playerViewModel = playerViewModel, 
+                                libraryViewModel = libraryViewModel, 
+                                homeViewModel = homeViewModel,
+                                onNavigateToEqualizer = {
+                                    settingsInitialCategory = "EQUALIZER"
+                                    navigateTo(DesktopScreen.SETTINGS)
+                                }
+                            )
                             DesktopScreen.SEARCH -> DesktopSearchScreen(playerViewModel)
                             DesktopScreen.LIBRARY -> DesktopLibraryScreen(playerViewModel)
                             DesktopScreen.NOW_PLAYING -> DesktopNowPlayingScreen(playerViewModel)
-                            DesktopScreen.SETTINGS -> DesktopSettingsScreen()
+                            DesktopScreen.SETTINGS -> DesktopSettingsScreen(initialCategory = settingsInitialCategory)
                             else -> { }
                         }
                     }
@@ -185,6 +203,7 @@ fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, 
                 isExpanded = currentScreen == DesktopScreen.NOW_PLAYING,
                 onOpenNowPlaying = ::toggleNowPlaying
             )
+            }
         }
     }
 }

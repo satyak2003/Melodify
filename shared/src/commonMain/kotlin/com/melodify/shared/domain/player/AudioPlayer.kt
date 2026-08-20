@@ -19,6 +19,9 @@ expect class AudioPlayer {
     var onSkipNext: (() -> Unit)?
     var onSkipPrevious: (() -> Unit)?
 
+    val equalizerManager: EqualizerManager
+    val audioOutputManager: AudioOutputManager
+
     fun play(url: String, track: Track, initialSeekMs: Long = 0L)
     fun resume()
     fun pause()

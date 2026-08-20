@@ -17,6 +17,9 @@ import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Bluetooth
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -50,6 +53,8 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 
+import androidx.compose.ui.unit.sp
+
 @Composable
 fun MiniPlayerContent(
     viewModel: PlayerViewModel,
@@ -57,6 +62,7 @@ fun MiniPlayerContent(
     onClick: () -> Unit
 ) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
+    val activeDevice by viewModel.audioOutputManager.activeDevice.collectAsStateWithLifecycle()
     val track = playerState.currentTrack ?: return
     val progress = if (playerState.durationMs > 0) playerState.positionMs.toFloat() / playerState.durationMs.toFloat() else 0f
     
@@ -126,6 +132,16 @@ fun MiniPlayerContent(
                         Column(Modifier.weight(1f)) {
                             Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = androidx.compose.ui.graphics.Color.White)
                             Text(track.artistNames, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val deviceIcon = when (activeDevice.type) {
+                                    com.melodify.shared.domain.player.AudioDeviceType.BLUETOOTH -> androidx.compose.material.icons.Icons.Rounded.Bluetooth
+                                    com.melodify.shared.domain.player.AudioDeviceType.WIRED_HEADPHONES -> androidx.compose.material.icons.Icons.Rounded.Headphones
+                                    else -> androidx.compose.material.icons.Icons.Rounded.Speaker
+                                }
+                                Icon(deviceIcon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(10.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(activeDevice.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                 }

@@ -39,6 +39,9 @@ class PlayerViewModel(
         isPlaying = { audioPlayer.isPlaying.value }
     )
     
+    val equalizerManager = audioPlayer.equalizerManager
+    val audioOutputManager = audioPlayer.audioOutputManager
+
     private val queueManager = QueueManager(audioPlayer)
     
     private val playbackManager = PlaybackManager(

@@ -48,6 +48,7 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
     val queue by playerViewModel.queue.collectAsState()
     val sleepOption by playerViewModel.sleepOption.collectAsState()
     val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsState()
+    val activeDevice by playerViewModel.audioOutputManager.activeDevice.collectAsState()
     val track = playerState.currentTrack
 
     if (track == null) {
@@ -190,10 +191,37 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                                         color = MaterialTheme.colorScheme.secondaryContainer
                                     ) {
                                         Text(
-                                            "HQ · 256kbps",
+                                            "HQ • 256kbps",
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.secondary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                
+                                Spacer(Modifier.width(16.dp))
+                                
+                                // Output Device badge
+                                val deviceIcon = when (activeDevice.type) {
+                                    com.melodify.shared.domain.player.AudioDeviceType.BLUETOOTH -> Icons.Rounded.Bluetooth
+                                    com.melodify.shared.domain.player.AudioDeviceType.WIRED_HEADPHONES -> Icons.Rounded.Headphones
+                                    else -> Icons.Rounded.Speaker
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.tertiaryContainer
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(deviceIcon, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            activeDevice.name,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.tertiary,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
@@ -378,7 +406,7 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(queue.tracks.size, key = { idx -> queue.tracks[idx].id }) { index ->
+                    items(queue.tracks.size, key = { idx -> "${queue.tracks[idx].id}_$idx" }) { index ->
                         val queueTrack = queue.tracks[index]
                         val isPlayingItem = index == queue.currentIndex
                         val isDragging = reorderState.draggingItemIndex == index

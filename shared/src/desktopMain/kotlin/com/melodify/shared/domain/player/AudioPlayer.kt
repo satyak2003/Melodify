@@ -40,6 +40,42 @@ actual class AudioPlayer {
     actual var onTrackEnded: (() -> Unit)? = null
     actual var onSkipNext: (() -> Unit)? = null
     actual var onSkipPrevious: (() -> Unit)? = null
+    
+    private val desktopAudioOutput = DesktopAudioOutputManager()
+    private val desktopEqualizer = DesktopEqualizerManager { enabled, bands, presetName ->
+        fxMediaPlayer?.let { fx ->
+            fx.audioEqualizer.isEnabled = enabled
+            if (enabled) {
+                fx.audioEqualizer.bands.forEachIndexed { i, b ->
+                    if (i < bands.size) {
+                        b.gain = (bands[i].levelMb / 100.0)
+                    }
+                }
+            }
+        }
+        
+        vlcComponent?.mediaPlayer()?.let { player ->
+            if (!enabled) {
+                player.audio().setEqualizer(null)
+            } else {
+                try {
+                    val factory = uk.co.caprica.vlcj.factory.MediaPlayerFactory()
+                    val vlcEq = if (presetName != null) factory.equalizer().newEqualizer(presetName) else factory.equalizer().newEqualizer()
+                    if (vlcEq != null) {
+                        if (presetName == null) {
+                            for (i in bands.indices) {
+                                vlcEq.setAmp(i, bands[i].levelMb / 100f)
+                            }
+                        }
+                        player.audio().setEqualizer(vlcEq)
+                    }
+                } catch(e: Exception) {}
+            }
+        }
+    }
+    
+    actual val equalizerManager: EqualizerManager = desktopEqualizer
+    actual val audioOutputManager: AudioOutputManager = desktopAudioOutput
 
     // JavaFX Media Engine
     private var fxMediaPlayer: MediaPlayer? = null
@@ -50,6 +86,8 @@ actual class AudioPlayer {
     private var vlcComponent: AudioPlayerComponent? = null
 
     init {
+        desktopAudioOutput.start()
+        
         // Initialize JavaFX Toolkit
         try {
             JFXPanel()
@@ -268,6 +306,7 @@ actual class AudioPlayer {
 
     actual fun release() {
         try { stop() } catch (ignored: Throwable) {}
+        desktopAudioOutput.stop()
         scope.cancel()
         try { 
             vlcComponent?.release() 

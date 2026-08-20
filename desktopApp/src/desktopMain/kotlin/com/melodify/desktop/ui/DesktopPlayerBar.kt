@@ -20,6 +20,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.melodify.shared.domain.model.currentTrack
 import com.melodify.shared.domain.model.durationMs
@@ -42,6 +43,7 @@ fun DesktopPlayerBar(
     val queue by playerViewModel.queue.collectAsState()
     val sleepOption by playerViewModel.sleepOption.collectAsState()
     val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsState()
+    val activeDevice by playerViewModel.audioOutputManager.activeDevice.collectAsState()
     val track = playerState.currentTrack
 
     val positionMs = playerState.positionMs
@@ -106,6 +108,22 @@ fun DesktopPlayerBar(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val deviceIcon = when (activeDevice.type) {
+                                            com.melodify.shared.domain.player.AudioDeviceType.BLUETOOTH -> Icons.Rounded.Bluetooth
+                                            com.melodify.shared.domain.player.AudioDeviceType.WIRED_HEADPHONES -> Icons.Rounded.Headphones
+                                            else -> Icons.Rounded.Speaker
+                                        }
+                                        Icon(deviceIcon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(10.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            activeDevice.name, 
+                                            maxLines = 1, 
+                                            overflow = TextOverflow.Ellipsis, 
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), 
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -250,6 +268,8 @@ fun DesktopPlayerBar(
                     var volume by remember { mutableFloatStateOf(0.8f) }
                     var previousVolume by remember { mutableFloatStateOf(0.8f) }
                     var showSleepMenu by remember { mutableStateOf(false) }
+                    var showCustomTimeDialog by remember { mutableStateOf(false) }
+                    var customTimeInput by remember { mutableStateOf("") }
 
                     val isMuted = volume <= 0.01f
                     val volumeIcon = when {
@@ -311,6 +331,37 @@ fun DesktopPlayerBar(
                             )
                         }
 
+                        if (showCustomTimeDialog) {
+                            androidx.compose.material3.AlertDialog(
+                                onDismissRequest = { showCustomTimeDialog = false },
+                                title = { Text("Custom Sleep Timer") },
+                                text = {
+                                    androidx.compose.material3.OutlinedTextField(
+                                        value = customTimeInput,
+                                        onValueChange = { if (it.all { char -> char.isDigit() }) customTimeInput = it },
+                                        label = { Text("Minutes") },
+                                        singleLine = true
+                                    )
+                                },
+                                confirmButton = {
+                                    androidx.compose.material3.TextButton(onClick = {
+                                        val mins = customTimeInput.toIntOrNull()
+                                        if (mins != null && mins > 0) {
+                                            playerViewModel.setSleepOption(SleepOption.CUSTOM, mins)
+                                        }
+                                        showCustomTimeDialog = false
+                                    }) {
+                                        Text("Start Timer")
+                                    }
+                                },
+                                dismissButton = {
+                                    androidx.compose.material3.TextButton(onClick = { showCustomTimeDialog = false }) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            )
+                        }
+
                         DropdownMenu(
                             expanded = showSleepMenu,
                             onDismissRequest = { showSleepMenu = false }
@@ -334,7 +385,15 @@ fun DesktopPlayerBar(
                                         }
                                     },
                                     onClick = {
-                                        playerViewModel.setSleepTimer(option)
+                                        if (option == SleepOption.CUSTOM) {
+                                            showCustomTimeDialog = true
+                                        } else {
+                                            if (option.minutes != null) {
+                                                playerViewModel.setSleepOption(option, option.minutes!!)
+                                            } else {
+                                                playerViewModel.setSleepTimer(option)
+                                            }
+                                        }
                                         showSleepMenu = false
                                     }
                                 )

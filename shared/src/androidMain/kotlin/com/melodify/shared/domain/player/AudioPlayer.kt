@@ -99,12 +99,23 @@ actual class AudioPlayer(private val context: Context) {
     actual var onSkipNext: (() -> Unit)? = null
     actual var onSkipPrevious: (() -> Unit)? = null
 
+    private val androidEqualizer = AndroidEqualizerManager()
+    private val androidAudioOutput = AndroidAudioOutputManager(context)
+    
+    actual val equalizerManager: EqualizerManager = androidEqualizer
+    actual val audioOutputManager: AudioOutputManager = androidAudioOutput
+
     init {
+        androidAudioOutput.start()
+        
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         transitionWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Melodify:TransitionWakeLock")
         transitionWakeLock?.setReferenceCounted(false)
 
         player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                androidEqualizer.attachSession(audioSessionId)
+            }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
                 if (isPlaying) {
@@ -187,6 +198,8 @@ actual class AudioPlayer(private val context: Context) {
     actual fun release() {
         _hasMedia.value = false
         positionJob?.cancel()
+        androidAudioOutput.stop()
+        androidEqualizer.release()
         scope.launch(Dispatchers.Main) { player.release() }
         scope.cancel()
     }

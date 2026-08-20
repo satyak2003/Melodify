@@ -29,13 +29,15 @@ fun main() = application {
         icon = iconPainter,
         state = windowState,
         undecorated = true,
-        transparent = true
+        transparent = false
     ) {
+        val isMaximized = windowState.placement == WindowPlacement.Maximized
         MelodifyDesktopApp(
+            isMaximized = isMaximized,
             onClose = ::exitApplication,
             onMinimize = { windowState.isMinimized = true },
             onMaximize = {
-                windowState.placement = if (windowState.placement == WindowPlacement.Maximized) {
+                windowState.placement = if (isMaximized) {
                     WindowPlacement.Floating
                 } else {
                     WindowPlacement.Maximized

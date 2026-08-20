@@ -1,6 +1,7 @@
 package com.melodify.android.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -520,6 +521,36 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
                             checked = isAutoPlay,
                             onCheckedChange = { ExperimentalSettingsStorage.setAutoPlayEnabled(it) }
                         )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Equalizer Card
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { navController.navigate("equalizer") },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.PlayCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.padding(horizontal = 4.dp))
+                                Text("Equalizer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Adjust audio frequencies and select presets",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = "Open Equalizer", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

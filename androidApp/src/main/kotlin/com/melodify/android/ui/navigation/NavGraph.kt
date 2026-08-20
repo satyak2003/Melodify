@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlaylistPlay
+import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
@@ -85,6 +86,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector,
     object Profile : Screen("profile", "Profile", Icons.Rounded.Person)
     object Downloads : Screen("downloads", "Downloads", Icons.Rounded.Download)
     object About : Screen("about", "About", Icons.Rounded.Info)
+    object Equalizer : Screen("equalizer", "Equalizer", Icons.Rounded.PlayCircle)
     object PlaylistDetail : Screen("playlist_detail/{playlistId}", "Playlist", Icons.Rounded.PlaylistPlay) {
         fun createRoute(playlistId: String) = "playlist_detail/$playlistId"
     }
@@ -105,7 +107,7 @@ fun MelodifyApp() {
     
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val isSettingsOrAbout = currentRoute == Screen.Settings.route || currentRoute == Screen.About.route || currentRoute == Screen.Profile.route || currentRoute == Screen.Splash.route
+    val isSettingsOrAbout = currentRoute == Screen.Settings.route || currentRoute == Screen.About.route || currentRoute == Screen.Profile.route || currentRoute == Screen.Splash.route || currentRoute == Screen.Equalizer.route
 
     val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     // 72dp nav bar pill + 16dp bottom gap + system nav bar inset
@@ -151,6 +153,12 @@ fun MelodifyApp() {
                         ) { LibraryScreen(navController, playerViewModel) }
                         composable(Screen.About.route) {
                             AboutScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(Screen.Equalizer.route) {
+                            com.melodify.android.ui.screens.EqualizerScreen(
+                                viewModel = playerViewModel,
+                                onBack = { navController.popBackStack() }
+                            )
                         }
                         composable(
                             Screen.Settings.route,

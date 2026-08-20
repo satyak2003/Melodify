@@ -62,6 +62,7 @@ fun NowPlayingContent(
     val queue by playerViewModel.queue.collectAsStateWithLifecycle()
     val sleepOption by playerViewModel.sleepOption.collectAsStateWithLifecycle()
     val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsStateWithLifecycle()
+    val activeDevice by playerViewModel.audioOutputManager.activeDevice.collectAsStateWithLifecycle()
     val track = playerState.currentTrack
     var showSleepTimerMenu by remember { mutableStateOf(false) }
     var showCustomTimeDialog by remember { mutableStateOf(false) }
@@ -415,6 +416,33 @@ fun NowPlayingContent(
                         modifier = Modifier.size(20.dp)
                     )
                 }
+                
+                Spacer(Modifier.height(16.dp))
+                
+                // Output Device Indicator
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    val deviceIcon = when (activeDevice.type) {
+                        com.melodify.shared.domain.player.AudioDeviceType.BLUETOOTH -> Icons.Rounded.Bluetooth
+                        com.melodify.shared.domain.player.AudioDeviceType.WIRED_HEADPHONES -> Icons.Rounded.Headphones
+                        else -> Icons.Rounded.Speaker
+                    }
+                    Icon(
+                        deviceIcon,
+                        contentDescription = "Output Device",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = activeDevice.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
@@ -430,7 +458,7 @@ fun NowPlayingContent(
                 )
             }
 
-            itemsIndexed(queue.tracks, key = { _, item -> item.id }) { index, qTrack ->
+            itemsIndexed(queue.tracks, key = { index, item -> "${item.id}_$index" }) { index, qTrack ->
                 val isCurrent = index == queue.currentIndex
                 val isDragging = reorderState.draggingItemIndex == index
                 val scale by animateFloatAsState(targetValue = if (isDragging) 1.04f else 1.0f)

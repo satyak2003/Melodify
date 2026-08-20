@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import com.melodify.desktop.ui.components.DesktopTrackOptionsPanel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -916,58 +917,17 @@ private fun TrackRow(
                     )
                 }
 
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Add to Queue") },
-                        leadingIcon = { Icon(Icons.Rounded.Queue, null) },
-                        onClick = {
-                            onAddToQueue()
-                            showMenu = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Download Track") },
-                        leadingIcon = { Icon(Icons.Rounded.Download, null) },
-                        onClick = {
-                            onDownload()
-                            showMenu = false
-                        }
-                    )
-
-                    if (isCustomPlaylist) {
-                        DropdownMenuItem(
-                            text = { Text("Remove from Playlist", color = MaterialTheme.colorScheme.error) },
-                            leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                            onClick = {
-                                onRemoveFromPlaylist()
-                                showMenu = false
-                            }
-                        )
-                    }
-
-                    if (allPlaylists.isNotEmpty()) {
-                        HorizontalDivider()
-                        Text(
-                            "Add to Playlist:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                        allPlaylists.forEach { pl ->
-                            DropdownMenuItem(
-                                text = { Text(pl.title) },
-                                leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },
-                                onClick = {
-                                    onAddToPlaylist(pl.id)
-                                    showMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
+                DesktopTrackOptionsPanel(
+                    track = track,
+                    isVisible = showMenu,
+                    allPlaylists = allPlaylists,
+                    isCustomPlaylist = isCustomPlaylist,
+                    onDismiss = { showMenu = false },
+                    onAddToQueue = onAddToQueue,
+                    onDownload = onDownload,
+                    onAddToPlaylist = onAddToPlaylist,
+                    onRemoveFromPlaylist = onRemoveFromPlaylist
+                )
             }
         }
     }

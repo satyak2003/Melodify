@@ -37,9 +37,11 @@ import javax.imageio.ImageIO
 import androidx.compose.ui.graphics.Brush
 
 @Composable
-fun DesktopSettingsScreen() {
+fun DesktopSettingsScreen(initialCategory: String = "PROFILE") {
     val libraryViewModel: LibraryViewModel = koinViewModel()
-    var selectedCategory by remember { mutableStateOf("IMPORT") }
+    
+    // Sidebar items
+    var selectedCategory by remember { mutableStateOf(initialCategory) }
 
     Row(
         modifier = Modifier
@@ -70,6 +72,7 @@ fun DesktopSettingsScreen() {
             DesktopSettingsMenuCategory("IMPORT", "Music Import", Icons.Rounded.LibraryMusic, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("ACCOUNTS", "External Audio", Icons.Rounded.Link, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("PLAYBACK", "Playback", Icons.Rounded.PlayCircle, selectedCategory) { selectedCategory = it }
+            DesktopSettingsMenuCategory("EQUALIZER", "Equalizer", Icons.Rounded.GraphicEq, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("SOCIAL", "Social & Party", Icons.Rounded.Group, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("DOWNLOADS", "Downloads", Icons.Rounded.Download, selectedCategory) { selectedCategory = it }
             DesktopSettingsMenuCategory("ABOUT", "About", Icons.Rounded.Info, selectedCategory) { selectedCategory = it }
@@ -81,20 +84,25 @@ fun DesktopSettingsScreen() {
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(32.dp)
-            ) {
-                when (selectedCategory) {
-                    "PROFILE" -> DesktopProfileSettingsSection()
-                    "IMPORT" -> DesktopImportSettingsSection(libraryViewModel)
-                    "ACCOUNTS" -> DesktopExternalAudioSettingsSection()
-                    "PLAYBACK" -> DesktopPlaybackSettingsSection()
-                    "SOCIAL" -> DesktopSocialSettingsSection()
-                    "DOWNLOADS" -> DesktopDownloadsSettingsSection()
-                    "ABOUT" -> DesktopAboutSettingsSection()
+            if (selectedCategory == "DOWNLOADS") {
+                DesktopDownloadsScreen()
+            } else if (selectedCategory == "EQUALIZER") {
+                DesktopEqualizerScreen()
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(32.dp)
+                ) {
+                    when (selectedCategory) {
+                        "PROFILE" -> DesktopProfileSettingsSection()
+                        "IMPORT" -> DesktopImportSettingsSection(libraryViewModel)
+                        "ACCOUNTS" -> DesktopExternalAudioSettingsSection()
+                        "PLAYBACK" -> DesktopPlaybackSettingsSection()
+                        "SOCIAL" -> DesktopSocialSettingsSection()
+                        "ABOUT" -> DesktopAboutSettingsSection()
+                    }
                 }
             }
         }
@@ -423,20 +431,6 @@ fun DesktopProfileSettingsSection() {
                     Text("Save")
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun DesktopDownloadsSettingsSection() {
-    Text("Downloads", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-    Spacer(Modifier.height(24.dp))
-    
-    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(24.dp)) {
-            Text("Offline Music", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text("Your downloaded tracks will appear here in future updates.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

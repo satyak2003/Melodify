@@ -264,45 +264,71 @@ fun HomeScreen(navController: NavController, playerViewModel: PlayerViewModel) {
                     val recommendedTracks = state.recommendedTracks.ifEmpty { state.trending }
                     val lastTrack = state.lastPlayedTrack
                     if (lastTrack != null) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Box(modifier = Modifier.weight(1f).aspectRatio(1f)) {
-                                SurpriseMeHeroButton(
-                                    modifier = Modifier.fillMaxSize(),
-                                    onSurprise = {
-                                        if (recommendedTracks.isNotEmpty()) {
-                                            playerViewModel.playTracks(recommendedTracks.shuffled(), 0)
+                            item {
+                                Box(modifier = Modifier.width(130.dp).aspectRatio(0.9f)) {
+                                    SurpriseMeHeroButton(
+                                        modifier = Modifier.fillMaxSize(),
+                                        onSurprise = {
+                                            if (recommendedTracks.isNotEmpty()) {
+                                                playerViewModel.playTracks(recommendedTracks.shuffled(), 0)
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
-                            Box(modifier = Modifier.weight(1f).aspectRatio(1f)) {
-                                ContinueListeningCard(
-                                    modifier = Modifier.fillMaxSize(),
-                                    track = lastTrack,
-                                    positionMs = state.lastPlayedPositionMs,
-                                    onClick = {
-                                        playerViewModel.playTrack(lastTrack, state.lastPlayedPositionMs)
-                                    }
-                                )
+                            item {
+                                Box(modifier = Modifier.width(130.dp).aspectRatio(0.9f)) {
+                                    EqualizerHeroButton(
+                                        modifier = Modifier.fillMaxSize(),
+                                        onClick = { navController.navigate(com.melodify.android.ui.navigation.Screen.Equalizer.route) }
+                                    )
+                                }
+                            }
+                            item {
+                                Box(modifier = Modifier.width(130.dp).aspectRatio(0.9f)) {
+                                    ContinueListeningCard(
+                                        modifier = Modifier.fillMaxSize(),
+                                        track = lastTrack,
+                                        positionMs = state.lastPlayedPositionMs,
+                                        onClick = {
+                                            playerViewModel.playTrack(lastTrack, state.lastPlayedPositionMs)
+                                        }
+                                    )
+                                }
                             }
                         }
                     } else {
-                        SurpriseMeHeroButton(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(90.dp)
-                                .padding(horizontal = 16.dp),
-                            onSurprise = {
-                                if (recommendedTracks.isNotEmpty()) {
-                                    playerViewModel.playTracks(recommendedTracks.shuffled(), 0)
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            item {
+                                Box(modifier = Modifier.width(130.dp).aspectRatio(0.9f)) {
+                                    SurpriseMeHeroButton(
+                                        modifier = Modifier.fillMaxSize(),
+                                        onSurprise = {
+                                            if (recommendedTracks.isNotEmpty()) {
+                                                playerViewModel.playTracks(recommendedTracks.shuffled(), 0)
+                                            }
+                                        }
+                                    )
                                 }
                             }
-                        )
+                            item {
+                                Box(modifier = Modifier.width(130.dp).aspectRatio(0.9f)) {
+                                    EqualizerHeroButton(
+                                        modifier = Modifier.fillMaxSize(),
+                                        onClick = { navController.navigate(com.melodify.android.ui.navigation.Screen.Equalizer.route) }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -625,5 +651,49 @@ fun getTimeGreeting(): String {
         in 12..16 -> "afternoon"
         in 17..20 -> "evening"
         else -> "night"
+    }
+}
+@Composable
+fun EqualizerHeroButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        modifier = modifier.bounceClick(scaleDown = 0.97f, onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.GraphicEq,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Equalizer",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Tune audio",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }

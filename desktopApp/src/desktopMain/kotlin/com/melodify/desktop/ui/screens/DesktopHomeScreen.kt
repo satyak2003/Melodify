@@ -48,7 +48,8 @@ import androidx.compose.ui.graphics.BlendMode
 fun DesktopHomeScreen(
     playerViewModel: PlayerViewModel,
     libraryViewModel: LibraryViewModel,
-    homeViewModel: HomeViewModel
+    homeViewModel: HomeViewModel,
+    onNavigateToEqualizer: () -> Unit = {}
 ) {
     val homeState by homeViewModel.uiState.collectAsState()
     val libraryState by libraryViewModel.uiState.collectAsState()
@@ -202,6 +203,11 @@ fun DesktopHomeScreen(
                                         playerViewModel.playTracks(tracks, 0)
                                     }
                                 }
+                            )
+
+                            DesktopEqualizerHeroButton(
+                                modifier = Modifier.weight(1f).height(90.dp),
+                                onClick = onNavigateToEqualizer
                             )
 
                             val lastTrack = state.lastPlayedTrack
@@ -396,49 +402,17 @@ fun DesktopTrackCard(
                         )
                     }
 
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = {
-                            showMenu = false
-                            showPlaylistSubmenu = false
-                        }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Add to Queue") },
-                            leadingIcon = { Icon(Icons.Rounded.QueueMusic, null) },
-                            onClick = {
-                                onAddToQueue()
-                                showMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Download") },
-                            leadingIcon = { Icon(Icons.Rounded.Download, null) },
-                            onClick = {
-                                onDownload()
-                                showMenu = false
-                            }
-                        )
-                        if (localPlaylists.isNotEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("Add to Playlist ▶") },
-                                leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },
-                                onClick = { showPlaylistSubmenu = !showPlaylistSubmenu }
-                            )
-                            if (showPlaylistSubmenu) {
-                                localPlaylists.forEach { playlist ->
-                                    DropdownMenuItem(
-                                        text = { Text("  └ ${playlist.title}") },
-                                        onClick = {
-                                            onAddToPlaylist(playlist.id)
-                                            showMenu = false
-                                            showPlaylistSubmenu = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    com.melodify.desktop.ui.components.DesktopTrackOptionsPanel(
+                        track = track,
+                        isVisible = showMenu,
+                        allPlaylists = localPlaylists,
+                        isCustomPlaylist = false,
+                        onDismiss = { showMenu = false },
+                        onAddToQueue = onAddToQueue,
+                        onDownload = onDownload,
+                        onAddToPlaylist = onAddToPlaylist,
+                        onRemoveFromPlaylist = {}
+                    )
                 }
             }
 
@@ -494,32 +468,59 @@ fun DesktopTrackListItem(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false; showPlaylistSubmenu = false }) {
-                DropdownMenuItem(
-                    text = { Text("Add to Queue") },
-                    leadingIcon = { Icon(Icons.Rounded.QueueMusic, null) },
-                    onClick = { onAddToQueue(); showMenu = false }
-                )
-                DropdownMenuItem(
-                    text = { Text("Download") },
-                    leadingIcon = { Icon(Icons.Rounded.Download, null) },
-                    onClick = { onDownload(); showMenu = false }
-                )
-                if (allPlaylists.isNotEmpty()) {
-                    DropdownMenuItem(
-                        text = { Text("Add to Playlist") },
-                        leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, null) },
-                        onClick = { showPlaylistSubmenu = !showPlaylistSubmenu }
+            com.melodify.desktop.ui.components.DesktopTrackOptionsPanel(
+                track = track,
+                isVisible = showMenu,
+                allPlaylists = allPlaylists,
+                isCustomPlaylist = false,
+                onDismiss = { showMenu = false },
+                onAddToQueue = onAddToQueue,
+                onDownload = onDownload,
+                onAddToPlaylist = onAddToPlaylist,
+                onRemoveFromPlaylist = {}
+            )
+        }
+    }
+}
+
+@Composable
+fun DesktopEqualizerHeroButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        modifier = modifier.clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.GraphicEq,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondary,
+                        modifier = Modifier.size(24.dp)
                     )
-                    if (showPlaylistSubmenu) {
-                        allPlaylists.forEach { playlist ->
-                            DropdownMenuItem(
-                                text = { Text("  ${playlist.title}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                onClick = { onAddToPlaylist(playlist.id); showMenu = false; showPlaylistSubmenu = false }
-                            )
-                        }
-                    }
                 }
+            }
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(
+                    "Equalizer",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "Tune your audio",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
