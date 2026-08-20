@@ -55,34 +55,39 @@ class MusicRepository(
             }
         }
 
-        // 2. Try Piped API (Community hosted YouTube wrapper, avoids cipher decryption locally)
-        try {
-            val pipedUrl = com.melodify.shared.api.piped.PipedApi.getStreamUrl(videoId)
-            if (pipedUrl != null) return@runCatching pipedUrl
-        } catch (e: Exception) {
-            println("Piped API failed: ${e.message}")
-        }
+        // Only attempt YouTube stream resolution if the ID is a valid YouTube Video ID (11 chars)
+        if (videoId.length == 11) {
+            // 2. Try Piped API (Community hosted YouTube wrapper, avoids cipher decryption locally)
+            try {
+                val pipedUrl = com.melodify.shared.api.piped.PipedApi.getStreamUrl(videoId)
+                if (pipedUrl != null) return@runCatching pipedUrl
+            } catch (e: Exception) {
+                println("Piped API failed: ${e.message}")
+            }
 
-        // 3. Try NewPipe Extractor (Works on Android + Desktop, handles cipher cracking natively)
-        try {
-            val newPipeUrl = NewPipeStreamResolver.getStreamUrl(videoId, preferM4a = true)
-            if (newPipeUrl != null) return@runCatching newPipeUrl
-        } catch (e: Exception) {
-            println("NewPipe failed for $videoId: ${e.message}")
-        }
+            // 3. Try NewPipe Extractor (Works on Android + Desktop, handles cipher cracking natively)
+            try {
+                val newPipeUrl = NewPipeStreamResolver.getStreamUrl(videoId, preferM4a = true)
+                if (newPipeUrl != null) return@runCatching newPipeUrl
+            } catch (e: Exception) {
+                println("NewPipe failed for $videoId: ${e.message}")
+            }
 
-        // 2. Try InnerTube API directly (may work for some videos)
-        try {
-            val response = innerTubeApi.getPlayerInfo(videoId)
-            val url = innerTubeParser.parseBestStreamUrl(response)
-            if (url != null) return@runCatching url
-        } catch (e: Exception) {
-            println("InnerTubeApi failed for $videoId: ${e.message}")
-        }
+            // 4. Try InnerTube API directly (may work for some videos)
+            try {
+                val response = innerTubeApi.getPlayerInfo(videoId)
+                val url = innerTubeParser.parseBestStreamUrl(response)
+                if (url != null) return@runCatching url
+            } catch (e: Exception) {
+                println("InnerTubeApi failed for $videoId: ${e.message}")
+            }
 
-        // 3. Try platform-specific stream resolver as fallback (yt-dlp on desktop)
-        val platformUrl = platformResolveStreamUrl(videoId)
-        if (platformUrl != null) return@runCatching platformUrl
+            // 5. Try platform-specific stream resolver as fallback (yt-dlp on desktop)
+            val platformUrl = platformResolveStreamUrl(videoId)
+            if (platformUrl != null) return@runCatching platformUrl
+        } else {
+            println("Skipping YouTube stream resolution for non-YouTube ID: $videoId")
+        }
         
         // 4. Fallback: search for an alternative video ID and try NewPipe again
         if (fallbackTitle != null) {

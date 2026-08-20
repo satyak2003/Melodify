@@ -28,8 +28,8 @@ object PipedApi {
     private val client = HttpClient()
     private val json = Json { ignoreUnknownKeys = true }
     
-    // Community instance recommended for Music
-    private const val BASE_URL = "https://pipedapi.kavin.rocks"
+    // Community instance recommended by user
+    private const val BASE_URL = "https://pipedapi.in.projectsegfau.lt"
 
     suspend fun getStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
         // Piped strictly requires 11-character YouTube video IDs
