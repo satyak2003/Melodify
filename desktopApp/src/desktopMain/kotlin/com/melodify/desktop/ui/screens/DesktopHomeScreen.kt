@@ -112,7 +112,7 @@ fun DesktopHomeScreen(
                                     }.getOrNull()
                                 }
 
-                                Column(modifier = Modifier.align(Alignment.CenterStart)) {
+                                Column(modifier = Modifier.align(Alignment.CenterEnd)) {
                                     if (lottieBytes != null) {
                                         val composition by rememberLottieComposition(
                                             LottieCompositionSpec.JsonString(lottieBytes!!.decodeToString())
@@ -148,11 +148,6 @@ fun DesktopHomeScreen(
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                     }
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = "Discover trending music or play your local library.",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                    )
                                 }
                             }
                         }

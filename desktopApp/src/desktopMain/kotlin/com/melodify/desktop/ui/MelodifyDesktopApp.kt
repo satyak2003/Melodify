@@ -38,6 +38,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.hoverable
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.Image
 
 enum class DesktopScreen { HOME, SEARCH, LIBRARY, NOW_PLAYING, PROFILE, SETTINGS, ABOUT, DOWNLOADS }
@@ -144,14 +149,32 @@ fun WindowScope.MelodifyDesktopApp(onClose: () -> Unit, onMinimize: () -> Unit, 
 
                 // Content area
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    when (currentScreen) {
-                        DesktopScreen.HOME -> DesktopHomeScreen(playerViewModel = playerViewModel, libraryViewModel = libraryViewModel, homeViewModel = homeViewModel)
-
-                        DesktopScreen.SEARCH -> DesktopSearchScreen(playerViewModel)
-                        DesktopScreen.LIBRARY -> DesktopLibraryScreen(playerViewModel)
-                        DesktopScreen.NOW_PLAYING -> DesktopNowPlayingScreen(playerViewModel)
-                        DesktopScreen.SETTINGS -> DesktopSettingsScreen()
-                        else -> { }
+                    androidx.compose.animation.AnimatedContent(
+                        targetState = currentScreen,
+                        transitionSpec = {
+                            if (targetState == DesktopScreen.NOW_PLAYING) {
+                                androidx.compose.animation.slideInVertically(
+                                    animationSpec = androidx.compose.animation.core.tween(400, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
+                                    initialOffsetY = { it }
+                                ) togetherWith androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(400))
+                            } else if (initialState == DesktopScreen.NOW_PLAYING) {
+                                androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(400)) togetherWith androidx.compose.animation.slideOutVertically(
+                                    animationSpec = androidx.compose.animation.core.tween(400, easing = androidx.compose.animation.core.FastOutLinearInEasing),
+                                    targetOffsetY = { it }
+                                )
+                            } else {
+                                androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(200)) togetherWith androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(200))
+                            }
+                        }
+                    ) { screen ->
+                        when (screen) {
+                            DesktopScreen.HOME -> DesktopHomeScreen(playerViewModel = playerViewModel, libraryViewModel = libraryViewModel, homeViewModel = homeViewModel)
+                            DesktopScreen.SEARCH -> DesktopSearchScreen(playerViewModel)
+                            DesktopScreen.LIBRARY -> DesktopLibraryScreen(playerViewModel)
+                            DesktopScreen.NOW_PLAYING -> DesktopNowPlayingScreen(playerViewModel)
+                            DesktopScreen.SETTINGS -> DesktopSettingsScreen()
+                            else -> { }
+                        }
                     }
                 }
             }
@@ -174,114 +197,152 @@ fun DesktopSidebar(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    
+
     val sidebarWidth by animateDpAsState(
         targetValue = if (isHovered) 220.dp else 72.dp,
         animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessLow)
     )
 
-    Column(
+    var indicatorY by remember { mutableStateOf(0f) }
+    var indicatorHeight by remember { mutableStateOf(0f) }
+    
+    val animatedIndicatorY by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = indicatorY,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        )
+    )
+    val animatedIndicatorHeight by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = indicatorHeight,
+        animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMedium)
+    )
+
+    Box(
         modifier = Modifier
             .width(sidebarWidth)
             .fillMaxHeight()
             .background(Color.Black.copy(alpha = 0.5f))
-            .padding(vertical = 16.dp, horizontal = 12.dp)
             .hoverable(interactionSource = interactionSource)
     ) {
-        // Logo
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 32.dp, top = 8.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start
+        if (indicatorHeight > 0f) {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 16.dp, horizontal = 12.dp)
+                    .fillMaxWidth()
+                    .height(with(LocalDensity.current) { animatedIndicatorHeight.toDp() })
+                    .graphicsLayer { translationY = animatedIndicatorY }
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(10.dp))
+            )
+        }
+        
+        Column(
+            modifier = Modifier.fillMaxSize().padding(vertical = 16.dp, horizontal = 12.dp)
         ) {
-            val logoBitmap = remember {
-                runCatching {
-                    val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.jpg")
-                    if (stream != null) javax.imageio.ImageIO.read(stream).toComposeImageBitmap() else null
-                }.getOrNull()
-            }
+            // Logo
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 32.dp, top = 8.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                val logoBitmap = remember {
+                    runCatching {
+                        val stream = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.jpg")
+                        if (stream != null) javax.imageio.ImageIO.read(stream).toComposeImageBitmap() else null
+                    }.getOrNull()
+                }
 
-            Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
-                if (logoBitmap != null) {
-                    Image(
-                        bitmap = logoBitmap,
-                        contentDescription = "Melodify Logo",
-                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                    )
-                } else {
-                    Icon(
-                        Icons.Rounded.MusicNote,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
+                Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
+                    if (logoBitmap != null) {
+                        Image(
+                            bitmap = logoBitmap,
+                            contentDescription = "Melodify Logo",
+                            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                    } else {
+                        Icon(
+                            Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isHovered,
+                    enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 300, delayMillis = 100)),
+                    exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 150))
+                ) {
+                    Text(
+                        "Melodify",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 12.dp),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
 
-            androidx.compose.animation.AnimatedVisibility(
-                visible = isHovered,
-                enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 300, delayMillis = 100)),
-                exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 150))
-            ) {
-                Text(
-                    "Melodify",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 12.dp),
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-        }
-
-        // Nav items
-        SidebarNavItem(
-            icon = Icons.Rounded.Home,
-            label = "Home",
-            selected = currentScreen == DesktopScreen.HOME,
-            isExpanded = isHovered
-        ) { onNavigate(DesktopScreen.HOME) }
-
-        SidebarNavItem(
-            icon = Icons.Rounded.Search,
-            label = "Search",
-            selected = currentScreen == DesktopScreen.SEARCH,
-            isExpanded = isHovered
-        ) { onNavigate(DesktopScreen.SEARCH) }
-
-        SidebarNavItem(
-            icon = Icons.Rounded.LibraryMusic,
-            label = "Your Library",
-            selected = currentScreen == DesktopScreen.LIBRARY,
-            isExpanded = isHovered
-        ) { onNavigate(DesktopScreen.LIBRARY) }
-
-        // Now Playing — only shown when a track is active
-        if (hasTrack) {
+            // Nav items
+            SidebarNavItem(
+                icon = Icons.Rounded.Home,
+                label = "Home",
+                selected = currentScreen == DesktopScreen.HOME,
+                isExpanded = isHovered,
+                onPositioned = { y, h -> if (currentScreen == DesktopScreen.HOME) { indicatorY = y; indicatorHeight = h } }
+            ) { onNavigate(DesktopScreen.HOME) }
+            
             Spacer(Modifier.height(8.dp))
+
+            SidebarNavItem(
+                icon = Icons.Rounded.Search,
+                label = "Search",
+                selected = currentScreen == DesktopScreen.SEARCH,
+                isExpanded = isHovered,
+                onPositioned = { y, h -> if (currentScreen == DesktopScreen.SEARCH) { indicatorY = y; indicatorHeight = h } }
+            ) { onNavigate(DesktopScreen.SEARCH) }
+            
+            Spacer(Modifier.height(8.dp))
+
+            SidebarNavItem(
+                icon = Icons.Rounded.LibraryMusic,
+                label = "Your Library",
+                selected = currentScreen == DesktopScreen.LIBRARY,
+                isExpanded = isHovered,
+                onPositioned = { y, h -> if (currentScreen == DesktopScreen.LIBRARY) { indicatorY = y; indicatorHeight = h } }
+            ) { onNavigate(DesktopScreen.LIBRARY) }
+
+            // Now Playing — only shown when a track is active
+            if (hasTrack) {
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Spacer(Modifier.height(8.dp))
+                SidebarNavItem(
+                    icon = Icons.Rounded.Equalizer,
+                    label = "Now Playing",
+                    selected = currentScreen == DesktopScreen.NOW_PLAYING,
+                    isExpanded = isHovered,
+                    onPositioned = { y, h -> if (currentScreen == DesktopScreen.NOW_PLAYING) { indicatorY = y; indicatorHeight = h } }
+                ) { onNavigate(DesktopScreen.NOW_PLAYING) }
+            }
+
+            Spacer(Modifier.weight(1f))
+
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(Modifier.height(8.dp))
             SidebarNavItem(
-                icon = Icons.Rounded.Equalizer,
-                label = "Now Playing",
-                selected = currentScreen == DesktopScreen.NOW_PLAYING,
-                isExpanded = isHovered
-            ) { onNavigate(DesktopScreen.NOW_PLAYING) }
+                icon = Icons.Rounded.Settings,
+                label = "Settings",
+                selected = currentScreen == DesktopScreen.SETTINGS,
+                isExpanded = isHovered,
+                onPositioned = { y, h -> if (currentScreen == DesktopScreen.SETTINGS) { indicatorY = y; indicatorHeight = h } }
+            ) { onNavigate(DesktopScreen.SETTINGS) }
         }
-
-        Spacer(Modifier.weight(1f))
-
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-        Spacer(Modifier.height(8.dp))
-        SidebarNavItem(
-            icon = Icons.Rounded.Settings,
-            label = "Settings",
-            selected = currentScreen == DesktopScreen.SETTINGS,
-            isExpanded = isHovered
-        ) { onNavigate(DesktopScreen.SETTINGS) }
     }
 }
 
@@ -292,25 +353,44 @@ fun SidebarNavItem(
     label: String,
     selected: Boolean,
     isExpanded: Boolean,
+    onPositioned: (Float, Float) -> Unit,
     onClick: () -> Unit
 ) {
-    val bgColor = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
     val contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (selected) 1.2f else 1.0f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        )
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(bgColor, RoundedCornerShape(10.dp))
+            .onGloballyPositioned { coords ->
+                if (selected) {
+                    onPositioned(coords.positionInParent().y, coords.size.height.toFloat())
+                }
+            }
+            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start
     ) {
         Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
+            Icon(
+                icon, 
+                contentDescription = label, 
+                tint = contentColor, 
+                modifier = Modifier
+                    .size(24.dp)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
+            )
         }
-        
+
         androidx.compose.animation.AnimatedVisibility(
             visible = isExpanded,
             enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 300, delayMillis = 100)),
@@ -328,4 +408,3 @@ fun SidebarNavItem(
         }
     }
 }
-
