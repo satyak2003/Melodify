@@ -84,7 +84,12 @@ actual class AudioPlayer {
                     // This fixes CDN errors (like 429s due to missing User-Agent, or complex parameters)
                     // by downloading via Ktor and serving a clean .m4a URL with proper headers to JavaFX.
                     val mediaUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
-                        StreamProxy.getProxyUrl(url)
+                        if (url.contains("googlevideo.com") || url.contains("youtube.com")) {
+                            // Bypass proxy for direct YouTube CDNs, just append .m4a so JavaFX MIME-sniffer accepts it
+                            if (url.contains("?")) "$url&ext=.m4a" else "$url?ext=.m4a"
+                        } else {
+                            StreamProxy.getProxyUrl(url)
+                        }
                     } else if (url.startsWith("file:/")) {
                         url
                     } else {
