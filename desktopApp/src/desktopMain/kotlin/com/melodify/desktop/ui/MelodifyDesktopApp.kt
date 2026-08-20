@@ -230,7 +230,9 @@ fun DesktopSidebar(
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 12.dp)
+                    modifier = Modifier.padding(start = 12.dp),
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -319,7 +321,9 @@ fun SidebarNavItem(
                 style = MaterialTheme.typography.bodyMedium,
                 color = contentColor,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                modifier = Modifier.padding(start = 12.dp)
+                modifier = Modifier.padding(start = 12.dp),
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
