@@ -216,15 +216,21 @@ fun DesktopSidebar(
                     modifier = Modifier.size(32.dp)
                 )
             }
-            if (isHovered) {
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "Melodify",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontFamily = FontFamily.Default, // Clean default sans-serif font
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isHovered,
+                enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 300, delayMillis = 100)),
+                exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 150))
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "Melodify",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
@@ -299,14 +305,20 @@ fun SidebarNavItem(
         horizontalArrangement = if (isExpanded) Arrangement.Start else Arrangement.Center
     ) {
         Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
-        if (isExpanded) {
-            Spacer(Modifier.width(12.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-            )
+        androidx.compose.animation.AnimatedVisibility(
+            visible = isExpanded,
+            enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 300, delayMillis = 100)),
+            exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 100))
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                )
+            }
         }
     }
 }

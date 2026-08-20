@@ -136,7 +136,7 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
 
             key(track.id) {
                 Column(
-                    modifier = Modifier.fillMaxHeight(),
+                    modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Album art - uses weight and aspect ratio to dynamically scale with window height
