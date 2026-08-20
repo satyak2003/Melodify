@@ -77,6 +77,14 @@ actual class AudioPlayer {
         _hasMedia.value = true
         _isBuffering.value = true
 
+        val isYouTubeStream = url.contains("googlevideo.com") || url.contains("youtube.com")
+
+        // VLC handles YouTube CDN bot protection natively via HTTP headers. Route directly if available!
+        if (isYouTubeStream && vlcAvailable) {
+            playVlc(url, initialSeekMs)
+            return
+        }
+
         if (fxInitialized) {
             Platform.runLater {
                 try {
