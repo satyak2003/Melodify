@@ -48,7 +48,9 @@ actual class AudioPlayer(private val context: Context) {
     private val cacheDataSourceFactory = CacheDataSource.Factory()
         .setCache(AudioCacheManager.getCache(context))
         .setUpstreamDataSourceFactory(
-            DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true))
+            DefaultDataSource.Factory(context, DefaultHttpDataSource.Factory()
+                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .setAllowCrossProtocolRedirects(true))
         )
 
     private val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
