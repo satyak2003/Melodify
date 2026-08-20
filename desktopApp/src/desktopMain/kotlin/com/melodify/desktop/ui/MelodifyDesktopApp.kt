@@ -192,7 +192,7 @@ fun DesktopSidebar(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = 32.dp, top = 8.dp).fillMaxWidth(),
-            horizontalArrangement = if (isHovered) Arrangement.Start else Arrangement.Center
+            horizontalArrangement = Arrangement.Start
         ) {
             val logoBitmap = remember {
                 runCatching {
@@ -201,36 +201,37 @@ fun DesktopSidebar(
                 }.getOrNull()
             }
 
-            if (logoBitmap != null) {
-                Image(
-                    bitmap = logoBitmap,
-                    contentDescription = "Melodify Logo",
-                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                )
-            } else {
-                Icon(
-                    Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp)
-                )
+            Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
+                if (logoBitmap != null) {
+                    Image(
+                        bitmap = logoBitmap,
+                        contentDescription = "Melodify Logo",
+                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                    )
+                } else {
+                    Icon(
+                        Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             }
+
             androidx.compose.animation.AnimatedVisibility(
                 visible = isHovered,
                 enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 300, delayMillis = 100)),
                 exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 150))
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Melodify",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                Text(
+                    "Melodify",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
             }
         }
 
@@ -300,25 +301,26 @@ fun SidebarNavItem(
             .padding(vertical = 4.dp)
             .background(bgColor, RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (isExpanded) Arrangement.Start else Arrangement.Center
+        horizontalArrangement = Arrangement.Start
     ) {
-        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
+        Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
+        }
+        
         androidx.compose.animation.AnimatedVisibility(
             visible = isExpanded,
             enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(durationMillis = 300, delayMillis = 100)),
             exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(durationMillis = 100))
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    label,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                )
-            }
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                modifier = Modifier.padding(start = 12.dp)
+            )
         }
     }
 }
