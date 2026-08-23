@@ -4,25 +4,33 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.melodify.shared.data.MusicRepository
 import com.melodify.shared.domain.model.Track
+import com.melodify.shared.domain.model.Playlist
+import com.melodify.shared.api.radio.FmStation
+import com.melodify.shared.data.storage.LastPlayedStorage
+import com.melodify.shared.data.storage.LibraryStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-
-import com.melodify.shared.data.storage.LastPlayedStorage
-import com.melodify.shared.data.storage.ListeningStatsStorage
-
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 sealed class HomeUiState {
     data object Loading : HomeUiState()
     data class Success(
-        val trending: List<Track>,
-        val recentlyPlayed: List<Track> = emptyList(),
+        val jumpBackInTracks: List<Track> = emptyList(),
         val lastPlayedTrack: Track? = null,
         val lastPlayedPositionMs: Long = 0L,
         val lastPlayedDurationMs: Long = 0L,
-        val weeklyStats: Map<String, Int> = emptyMap(),
-        val recommendedTracks: List<Track> = emptyList()
+        val recommendedTracks: List<Track> = emptyList(),
+        val mostPlayedTracks: List<Track> = emptyList(),
+        val moods: List<String> = listOf("Chill", "Happy", "Focus", "Party", "Workout", "Sleep"),
+        val offlineTracks: List<Track> = emptyList(),
+        val userPlaylists: List<Playlist> = emptyList(),
+        val fmStations: List<FmStation> = emptyList(),
+        val selectedMood: String? = null,
+        val selectedMoodTracks: List<Track>? = null,
+        val selectedFmCountry: String? = null
     ) : HomeUiState()
 
     data class Error(val message: String) : HomeUiState()
@@ -36,11 +44,42 @@ class HomeViewModel(private val musicRepository: MusicRepository) : ViewModel() 
         loadHome()
     }
 
+
+    
+    fun loadFmStationsForCountry(countryCode: String?) {
+        val state = _uiState.value as? HomeUiState.Success ?: return
+        if (state.selectedFmCountry == countryCode) return
+
+        _uiState.value = state.copy(selectedFmCountry = countryCode)
+        viewModelScope.launch {
+            val stations = musicRepository.getTopFmStations(10, countryCode).getOrDefault(emptyList())
+            val currentState = _uiState.value as? HomeUiState.Success ?: return@launch
+            _uiState.value = currentState.copy(fmStations = stations)
+        }
+    }
+
+    fun loadMoodTracks(mood: String) {
+        val state = _uiState.value as? HomeUiState.Success ?: return
+        if (state.selectedMood == mood) {
+            // Toggle off
+            _uiState.value = state.copy(selectedMood = null, selectedMoodTracks = null)
+            return
+        }
+        _uiState.value = state.copy(selectedMood = mood, selectedMoodTracks = null) // Loading state
+        
+        viewModelScope.launch {
+            val tracks = musicRepository.getMoodTracks(mood, 15).getOrDefault(emptyList())
+            val currentState = _uiState.value as? HomeUiState.Success ?: return@launch
+            if (currentState.selectedMood == mood) {
+                _uiState.value = currentState.copy(selectedMoodTracks = tracks)
+            }
+        }
+    }
+
     fun refresh() {
         loadHome()
     }
 
-    /** Refreshes the resume card without making another network request. */
     fun refreshLastPlayed() {
         val state = _uiState.value as? HomeUiState.Success ?: return
         val lastPlayed = LastPlayedStorage.loadLastPlayed()
@@ -51,58 +90,55 @@ class HomeViewModel(private val musicRepository: MusicRepository) : ViewModel() 
         )
     }
 
+    
+    suspend fun getMoodTracks(mood: String): List<Track> {
+        return musicRepository.getMoodTracks(mood, 15).getOrDefault(emptyList())
+    }
+
     private fun loadHome() {
         viewModelScope.launch {
             _uiState.value = HomeUiState.Loading
-            val lastPlayed = LastPlayedStorage.loadLastPlayed()
-            val stats = ListeningStatsStorage.getWeeklyMinutesMap()
-
-            musicRepository.getHomeFeed()
-                .onSuccess { tracks ->
-                    if (tracks.isNotEmpty()) {
-                        _uiState.value = HomeUiState.Success(
-                            trending = tracks,
-                            lastPlayedTrack = lastPlayed?.currentTrack,
-                            lastPlayedPositionMs = lastPlayed?.positionMs ?: 0L,
-                            lastPlayedDurationMs = lastPlayed?.durationMs ?: 0L,
-                            weeklyStats = stats,
-                            recommendedTracks = com.melodify.shared.domain.RecommendationEngine.getRecommendations(count = 20)
-                        )
+            
+            try {
+                val lastPlayed = LastPlayedStorage.loadLastPlayed()
+                val recentTracksAsync = async<List<Track>> { musicRepository.getRecentTracks(4) }
+                val mostPlayedAsync = async<List<Track>> { musicRepository.getMostPlayedTracks(10) }
+                val fmStationsAsync = async<List<FmStation>> { musicRepository.getTopFmStations(10).getOrDefault(emptyList()) }
+                
+                // Get recommendations based on last played or a default search
+                val recommendationsAsync = async<List<Track>> {
+                    if (lastPlayed?.currentTrack != null) {
+                        val track = lastPlayed.currentTrack
+                        musicRepository.getRecommendations(track.artists.firstOrNull()?.name ?: "", track.title).getOrDefault(emptyList())
                     } else {
-                        fetchFallbackTrending(lastPlayed, stats)
+                        musicRepository.getHomeFeed().getOrDefault(emptyList())
                     }
                 }
-                .onFailure {
-                    fetchFallbackTrending(lastPlayed, stats)
-                }
-        }
-    }
+                
+                val recentTracks = recentTracksAsync.await()
+                val mostPlayed = mostPlayedAsync.await()
+                val fmStations = fmStationsAsync.await()
+                val recommendations = recommendationsAsync.await()
 
-    private suspend fun fetchFallbackTrending(
-        lastPlayed: com.melodify.shared.data.storage.StoredLastPlayed? = null,
-        stats: Map<String, Int> = emptyMap()
-    ) {
-        musicRepository.search("Top Hits Trending")
-            .onSuccess { result ->
+                val library = LibraryStorage.loadLibrary()
+                val localFilesPlaylist = library.localPlaylists.firstOrNull { it.id == "local_music_files" }
+                val offlineTracks = (localFilesPlaylist?.tracks ?: emptyList()) + library.downloadedTracks
+                val userPlaylists = library.localPlaylists.filter { it.id != "local_music_files" }
+
                 _uiState.value = HomeUiState.Success(
-                    trending = result.tracks,
+                    jumpBackInTracks = recentTracks,
                     lastPlayedTrack = lastPlayed?.currentTrack,
                     lastPlayedPositionMs = lastPlayed?.positionMs ?: 0L,
                     lastPlayedDurationMs = lastPlayed?.durationMs ?: 0L,
-                    weeklyStats = stats,
-                    recommendedTracks = com.melodify.shared.domain.RecommendationEngine.getRecommendations(count = 20)
+                    recommendedTracks = recommendations,
+                    mostPlayedTracks = mostPlayed,
+                    offlineTracks = offlineTracks,
+                    userPlaylists = userPlaylists,
+                    fmStations = fmStations
                 )
+            } catch (e: Exception) {
+                _uiState.value = HomeUiState.Error(e.message ?: "Failed to load home feed")
             }
-            .onFailure { e ->
-                val msg = when {
-                    e is java.net.UnknownHostException || e is java.net.ConnectException || e.message?.contains("Unable to resolve host") == true -> "You're offline — listen to your downloaded music!"
-                    e is java.io.IOException -> "Connection lost. Check your network and try again."
-                    else -> "Something went wrong. Tap retry to try again."
-                }
-                _uiState.value = HomeUiState.Error(msg)
-            }
+        }
     }
-
-
-
 }

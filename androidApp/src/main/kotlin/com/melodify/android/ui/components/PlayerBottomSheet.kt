@@ -50,19 +50,21 @@ fun PlayerBottomSheet(
     val screenHeight = configuration.screenHeightDp.dp
     val coroutineScope = rememberCoroutineScope()
 
-    val collapsedHeight = 72.dp
+    val collapsedHeight = 90.dp
     val expandedHeight = screenHeight
 
-    val maxHeightPx = with(density) { expandedHeight.toPx() }
+    
     val minHeightPx = with(density) { collapsedHeight.toPx() }
     val bottomNavHeightPx = with(density) { bottomNavHeight.toPx() }
 
-    val decayAnimationSpec = androidx.compose.animation.rememberSplineBasedDecay<Float>()
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val maxHeightPx = constraints.maxHeight.toFloat()
+val decayAnimationSpec = androidx.compose.animation.rememberSplineBasedDecay<Float>()
     val draggableState = remember(decayAnimationSpec) {
         AnchoredDraggableState<PlayerDragState>(
             initialValue = PlayerDragState.Collapsed,
             anchors = DraggableAnchors<PlayerDragState> {
-                PlayerDragState.Collapsed at (maxHeightPx - minHeightPx - bottomNavHeightPx - with(density) { 4.dp.toPx() })
+                PlayerDragState.Collapsed at (maxHeightPx - minHeightPx - bottomNavHeightPx)
                 PlayerDragState.Expanded at 0f
             },
             positionalThreshold = { distance: Float -> distance * 0.3f },
@@ -73,8 +75,8 @@ fun PlayerBottomSheet(
     }
 
     val offsetValue = draggableState.offset
-    val offset = if (java.lang.Float.isNaN(offsetValue)) (maxHeightPx - minHeightPx - bottomNavHeightPx - with(density) { 4.dp.toPx() }) else offsetValue
-    val totalDistance = (maxHeightPx - minHeightPx - bottomNavHeightPx - with(density) { 4.dp.toPx() })
+    val offset = if (java.lang.Float.isNaN(offsetValue)) (maxHeightPx - minHeightPx - bottomNavHeightPx) else offsetValue
+    val totalDistance = (maxHeightPx - minHeightPx - bottomNavHeightPx)
     val rawProgress = if (totalDistance == 0f) 0f else (1f - (offset / totalDistance)).coerceIn(0f, 1f)
 
     // Smooth progress follows swipe exactly
@@ -90,8 +92,11 @@ fun PlayerBottomSheet(
     val backgroundAlpha = (0.3f + 0.6f * progress).coerceIn(0f, 1f)
     val miniPlayerTranslationY = 20f * progress // Slight upward movement
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    
         content()
+
+
+
 
         if (track != null && showPlayer) {
             val isExpanded = draggableState.currentValue == PlayerDragState.Expanded
@@ -196,7 +201,6 @@ fun PlayerBottomSheet(
                 }
             }
         }
-
         // Render BottomBar dynamically so it is above the sheet when collapsed, and animates out when sheet expands
         if (bottomNavHeight > 0.dp) {
             Box(

@@ -1,3 +1,5 @@
+import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
+
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -42,17 +44,20 @@ compose.desktop {
         mainClass = "com.melodify.desktop.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Exe)
             packageName = "Melodify"
             packageVersion = "1.0.0"
             description = "Ad-free music player with Spotify import"
-            copyright = "© 2025 Melodify"
+            copyright = "Ac 2025 Melodify"
             vendor = "Melodify"
 
             windows {
                 menuGroup = "Melodify"
                 upgradeUuid = "4c5f6a7b-8c9d-10e1-a2b3-c4d5e6f70001"
                 iconFile.set(project.file("src/main/resources/icon.ico"))
+                dirChooser = true
+                shortcut = true
+                menu = true
             }
 
             linux {
@@ -63,5 +68,13 @@ compose.desktop {
         buildTypes.release.proguard {
             isEnabled = false
         }
+    }
+}
+
+
+tasks.withType<AbstractJPackageTask>().configureEach {
+    if (targetFormat.name.contains("Msi") || targetFormat.name.contains("Exe")) {
+        freeArgs.add("--resource-dir")
+        freeArgs.add(project.file("installer-resources").absolutePath)
     }
 }

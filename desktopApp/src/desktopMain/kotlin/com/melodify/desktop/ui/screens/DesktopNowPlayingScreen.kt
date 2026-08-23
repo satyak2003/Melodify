@@ -104,7 +104,7 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
             // Sleep Timer Banner if active
             if (sleepOption != SleepOption.OFF) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.padding(bottom = 16.dp)
                 ) {
@@ -145,7 +145,7 @@ fun DesktopNowPlayingScreen(playerViewModel: PlayerViewModel) {
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f),
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(8.dp),
                         elevation = CardDefaults.cardElevation(defaultElevation = 32.dp)
                     ) {
                         AsyncImage(

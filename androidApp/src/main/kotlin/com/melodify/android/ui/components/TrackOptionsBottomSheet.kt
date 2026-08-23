@@ -1,4 +1,4 @@
-package com.melodify.android.ui.components
+﻿package com.melodify.android.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*

@@ -54,7 +54,7 @@ fun DesktopTrackOptionsPanel(
                     .fillMaxHeight()
                     .width(320.dp)
                     .padding(vertical = 16.dp, horizontal = 16.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shadowElevation = 8.dp
             ) {

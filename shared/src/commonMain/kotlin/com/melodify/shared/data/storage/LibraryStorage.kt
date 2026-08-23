@@ -13,7 +13,8 @@ data class StoredLibraryData(
     val youtubePlaylists: List<Playlist> = emptyList(),
     val localPlaylists: List<Playlist> = emptyList(),
     val likedTracks: List<Track> = emptyList(),
-    val jellyfinTracks: List<Track> = emptyList()
+    val jellyfinTracks: List<Track> = emptyList(),
+    val downloadedTracks: List<Track> = emptyList()
 )
 
 object LibraryStorage {
@@ -29,7 +30,8 @@ object LibraryStorage {
 
     fun saveLibrary(spotifyPlaylists: List<Playlist>, youtubePlaylists: List<Playlist>, localPlaylists: List<Playlist>, likedTracks: List<Track>, jellyfinTracks: List<Track> = emptyList()) {
         try {
-            val data = StoredLibraryData(spotifyPlaylists, youtubePlaylists, localPlaylists, likedTracks, jellyfinTracks)
+            val current = loadLibrary()
+            val data = StoredLibraryData(spotifyPlaylists, youtubePlaylists, localPlaylists, likedTracks, jellyfinTracks, current.downloadedTracks)
             libraryFile.writeText(json.encodeToString(data))
         } catch (e: Exception) {
             println("Failed to save library: ${e.message}")
@@ -91,7 +93,29 @@ object LibraryStorage {
         val updatedLiked = data.likedTracks.map { 
             if (it.id == trackId) it.copy(youtubeVideoId = youtubeVideoId) else it 
         }
-        
-        saveLibrary(updatedSpotify, updatedYoutube, updatedLocal, updatedLiked, data.jellyfinTracks)
+        val updatedDownloaded = data.downloadedTracks.map {
+            if (it.id == trackId) it.copy(youtubeVideoId = youtubeVideoId) else it
+        }
+        val dataWithDownloaded = data.copy(
+            spotifyPlaylists = updatedSpotify,
+            youtubePlaylists = updatedYoutube,
+            localPlaylists = updatedLocal,
+            likedTracks = updatedLiked,
+            downloadedTracks = updatedDownloaded
+        )
+        try {
+            libraryFile.writeText(json.encodeToString(dataWithDownloaded))
+        } catch (e: Exception) {}
+    }
+
+    fun addDownloadedTrack(track: Track) {
+        val current = loadLibrary()
+        val existing = current.downloadedTracks.find { it.id == track.id }
+        if (existing == null) {
+            val updated = current.copy(downloadedTracks = current.downloadedTracks + track)
+            try {
+                libraryFile.writeText(json.encodeToString(updated))
+            } catch(e: Exception) {}
+        }
     }
 }

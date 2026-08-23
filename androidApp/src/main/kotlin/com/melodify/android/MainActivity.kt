@@ -1,4 +1,4 @@
-package com.melodify.android
+﻿package com.melodify.android
 
 import android.content.Context
 import android.content.Intent

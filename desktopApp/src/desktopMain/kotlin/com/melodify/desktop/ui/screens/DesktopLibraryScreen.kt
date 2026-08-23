@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import com.melodify.desktop.ui.components.DesktopTrackOptionsPanel
 import androidx.compose.ui.Modifier
+import com.melodify.shared.ui.modifiers.shimmerEffect
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -219,7 +220,7 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -243,7 +244,7 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer
@@ -300,8 +301,18 @@ fun DesktopLibraryScreen(playerViewModel: PlayerViewModel) {
             // Playlist list
             when (val state = uiState) {
                 is LibraryUiState.Loading -> {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        items(6) {
+                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)).shimmerEffect())
+                                Spacer(Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Box(modifier = Modifier.fillMaxWidth(0.6f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                                    Spacer(Modifier.height(8.dp))
+                                    Box(modifier = Modifier.fillMaxWidth(0.3f).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -574,7 +585,7 @@ private fun TrackListPanel(
         ) {
             // Playlist cover
             Box(
-                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp))
+                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {

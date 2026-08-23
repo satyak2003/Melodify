@@ -69,7 +69,7 @@ fun MiniPlayerContent(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount < -20f) {
@@ -78,7 +78,7 @@ fun MiniPlayerContent(
                 }
             }
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = androidx.compose.ui.graphics.RectangleShape,
         colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xCC000000)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = androidx.compose.foundation.BorderStroke(0.5.dp, androidx.compose.ui.graphics.Color(0x33FFFFFF))

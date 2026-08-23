@@ -1,4 +1,4 @@
-package com.melodify.android
+﻿package com.melodify.android
 
 import android.app.Application
 import com.melodify.android.di.appModule

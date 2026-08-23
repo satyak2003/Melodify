@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.Color
@@ -78,37 +79,6 @@ fun WindowScope.MelodifyDesktopApp(isMaximized: Boolean, onClose: () -> Unit, on
             }
         }
         
-        val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "aurora")
-        val auroraPhase by infiniteTransition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                animation = androidx.compose.animation.core.tween(15000, easing = androidx.compose.animation.core.LinearEasing),
-                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-            ),
-            label = "aurora_phase"
-        )
-
-        val auroraColor1 = Color(
-            red = (0x00 + (0x10 * auroraPhase)).toInt().coerceIn(0, 255),
-            green = (0xFF + (-0x44 * auroraPhase)).toInt().coerceIn(0, 255), // Cyan leaning
-            blue = (0xAA + (0x55 * auroraPhase)).toInt().coerceIn(0, 255)
-        )
-
-        val auroraColor2 = Color(
-            red = (0xAA + (0x55 * (1f - auroraPhase))).toInt().coerceIn(0, 255), // Magenta leaning
-            green = (0x00 + (0x44 * auroraPhase)).toInt().coerceIn(0, 255),
-            blue = (0xFF + (-0x22 * (1f - auroraPhase))).toInt().coerceIn(0, 255)
-        )
-
-        val backgroundGradient = Brush.verticalGradient(
-            colors = listOf(
-                auroraColor1.copy(alpha = 0.2f),
-                auroraColor2.copy(alpha = 0.1f),
-                Color.Black,
-                Color.Black
-            )
-        )
 
         androidx.compose.material3.Surface(
             modifier = Modifier
@@ -120,7 +90,6 @@ fun WindowScope.MelodifyDesktopApp(isMaximized: Boolean, onClose: () -> Unit, on
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(backgroundGradient)
             ) {
             
             // Custom Title Bar

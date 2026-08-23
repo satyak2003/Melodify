@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Include>
+    <WixVariable Id="WixUIBannerBmp" Value="ui-banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="ui-dialog.bmp" />
+</Include>

@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.melodify.shared.ui.modifiers.shimmerEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -137,7 +138,7 @@ fun DesktopSearchScreen(playerViewModel: PlayerViewModel) {
             ) {
                 items(searchHistory) { historyItem ->
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.clickable { viewModel.updateQuery(historyItem) }
                     ) {
@@ -201,8 +202,21 @@ fun DesktopSearchScreen(playerViewModel: PlayerViewModel) {
             }
 
             is SearchUiState.Loading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    item {
+                        Text("Songs", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 16.dp))
+                    }
+                    items(5) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).shimmerEffect())
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Box(modifier = Modifier.fillMaxWidth(0.4f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                                Spacer(Modifier.height(8.dp))
+                                Box(modifier = Modifier.fillMaxWidth(0.2f).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                            }
+                        }
+                    }
                 }
             }
 
@@ -254,6 +268,49 @@ fun DesktopSearchScreen(playerViewModel: PlayerViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+fun DesktopTrackListItem(
+    track: com.melodify.shared.domain.model.Track,
+    allPlaylists: List<com.melodify.shared.domain.model.Playlist>,
+    onClick: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onDownload: () -> Unit,
+    onAddToPlaylist: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        coil3.compose.AsyncImage(
+            model = track.thumbnailUrl,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                text = track.artists.joinToString { it.name },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
     }
 }

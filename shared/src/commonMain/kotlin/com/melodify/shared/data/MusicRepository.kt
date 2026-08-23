@@ -11,6 +11,9 @@ import com.melodify.shared.domain.model.TrackSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlin.math.abs
 import com.melodify.shared.domain.model.YouTubePlaylist
 import io.ktor.client.HttpClient
@@ -26,7 +29,9 @@ import com.melodify.shared.data.storage.YouTubeAuthManager
 class MusicRepository(
     private val innerTubeApi: InnerTubeApi,
     private val innerTubeParser: InnerTubeParser,
-    private val deezerApi: DeezerApi
+    private val deezerApi: DeezerApi,
+    private val lastFmApi: com.melodify.shared.api.lastfm.LastFmApi,
+    private val fmRadioApi: com.melodify.shared.api.radio.FmRadioApi
 ) {
 
     suspend fun search(query: String): Result<SearchResult> = runCatching {
@@ -334,5 +339,61 @@ class MusicRepository(
             println("Deezer/InnerTube enhancement failed for ${track.title}: ${e.message}")
         }
         return track
+    }
+
+    suspend fun getRecommendations(artist: String, track: String, limit: Int = 10): Result<List<Track>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val similar = lastFmApi.getSimilarTracks(artist, track, limit)
+            if (similar.isEmpty()) return@withContext emptyList()
+            
+            val results = similar.take(6).mapNotNull { query ->
+                try {
+                    val searchResult = innerTubeApi.search(query)
+                    val parsed = innerTubeParser.parseSearchResults(searchResult)
+                    parsed.tracks.firstOrNull()?.let { enhanceTrack(it) }
+                } catch(e: Exception) { null }
+            }
+            results
+        }
+    }
+    
+    suspend fun getMoodTracks(mood: String, limit: Int = 10): Result<List<Track>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val topTracks = lastFmApi.getMoodTracks(mood, limit)
+            if (topTracks.isEmpty()) return@withContext emptyList()
+            
+            // Search top tracks on YouTube concurrently
+            val deferreds = mutableListOf<kotlinx.coroutines.Deferred<Track?>>()
+            for (query in topTracks.take(8)) {
+                val def = kotlinx.coroutines.GlobalScope.async(Dispatchers.IO) {
+                    try {
+                        val searchResult = innerTubeApi.search(query)
+                        val parsed = innerTubeParser.parseSearchResults(searchResult)
+                        parsed.tracks.firstOrNull()?.let { enhanceTrack(it) }
+                    } catch(e: Exception) { null }
+                }
+                deferreds.add(def)
+            }
+            val results = deferreds.awaitAll().filterNotNull()
+            results
+        }
+    }
+
+    suspend fun getTopFmStations(limit: Int = 10, countryCode: String? = null): Result<List<com.melodify.shared.api.radio.FmStation>> = runCatching {
+        withContext(Dispatchers.IO) {
+            fmRadioApi.getTopStations(limit, countryCode)
+        }
+    }
+    
+    fun getMostPlayedTracks(limit: Int = 10): List<Track> {
+        return com.melodify.shared.data.storage.HistoryStorage.getMostPlayed(limit)
+    }
+    
+    fun getRecentTracks(limit: Int = 4): List<Track> {
+        return com.melodify.shared.data.storage.HistoryStorage.getRecent(limit)
+    }
+    
+    fun addRecentlyPlayed(track: Track) {
+        com.melodify.shared.data.storage.HistoryStorage.addPlay(track)
     }
 }

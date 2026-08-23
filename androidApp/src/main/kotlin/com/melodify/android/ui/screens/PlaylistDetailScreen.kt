@@ -1,4 +1,4 @@
-package com.melodify.android.ui.screens
+﻿package com.melodify.android.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -121,7 +121,7 @@ fun PlaylistDetailScreen(
                             ) {
                                 Card(
                                     modifier = Modifier.size(130.dp),
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
                                 ) {
                                     if (playlist.thumbnailUrl != null) {
@@ -169,7 +169,7 @@ fun PlaylistDetailScreen(
                                     val totalDurationMs = playlist.tracks.sumOf { it.durationMs }
                                     val durationMin = totalDurationMs / 60000
                                     Text(
-                                        "${playlist.tracks.size} songs • $durationMin mins",
+                                        "${playlist.tracks.size} songs â€¢ $durationMin mins",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

@@ -1,4 +1,4 @@
-package com.melodify.android.ui.screens
+﻿package com.melodify.android.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +14,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.melodify.shared.ui.modifiers.shimmerEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
@@ -282,8 +283,21 @@ fun LibraryScreen(
 
         when (val state = uiState) {
             is LibraryUiState.Loading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
+                    item {
+                        Text("My Library", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
+                    }
+                    items(6) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)).shimmerEffect())
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Box(modifier = Modifier.fillMaxWidth(0.5f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                                Spacer(Modifier.height(8.dp))
+                                Box(modifier = Modifier.fillMaxWidth(0.3f).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                            }
+                        }
+                    }
                 }
             }
 
@@ -362,7 +376,7 @@ fun SpotifyConnectCard(onConnect: () -> Unit) {
             .padding(16.dp)
             .clickable(onClick = onConnect),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -405,7 +419,7 @@ fun ImportProgressCard(progress: ImportProgress) {
             .fillMaxWidth()
             .padding(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -452,7 +466,7 @@ fun PlaylistItem(playlist: Playlist, onClick: () -> Unit, onLongClick: () -> Uni
         },
         supportingContent = {
             Text(
-                "${playlist.trackCount} songs • ${playlist.source.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                "${playlist.trackCount} songs â€¢ ${playlist.source.name.lowercase().replaceFirstChar { it.uppercase() }}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -499,7 +513,7 @@ fun LikedSongsCard(count: Int, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),

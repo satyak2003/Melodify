@@ -108,22 +108,6 @@ fun DesktopPlayerBar(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        val deviceIcon = when (activeDevice.type) {
-                                            com.melodify.shared.domain.player.AudioDeviceType.BLUETOOTH -> Icons.Rounded.Bluetooth
-                                            com.melodify.shared.domain.player.AudioDeviceType.WIRED_HEADPHONES -> Icons.Rounded.Headphones
-                                            else -> Icons.Rounded.Speaker
-                                        }
-                                        Icon(deviceIcon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(10.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            activeDevice.name, 
-                                            maxLines = 1, 
-                                            overflow = TextOverflow.Ellipsis, 
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), 
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
                                 }
                             }
                         }

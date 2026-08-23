@@ -46,6 +46,7 @@ object DownloadWorker {
                 }
                 if (result.isSuccess) {
                     DownloadQueueManager.updateState(item.id, DownloadState.Completed)
+                    com.melodify.shared.data.storage.LibraryStorage.addDownloadedTrack(result.getOrNull() ?: item.track)
                 } else {
                     val error = result.exceptionOrNull()
                     if (error is CancellationException) throw error
@@ -80,6 +81,7 @@ object DownloadWorker {
 
                 if (result.isSuccess) {
                     DownloadQueueManager.updateState(item.id, DownloadState.Completed)
+                    com.melodify.shared.data.storage.LibraryStorage.addDownloadedTrack(result.getOrNull() ?: item.track)
                 } else {
                     val error = result.exceptionOrNull()
                     if (error is CancellationException) throw error

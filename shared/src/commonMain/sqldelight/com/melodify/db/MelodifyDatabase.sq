@@ -40,6 +40,7 @@ CREATE TABLE PlaylistTrackCrossRef (
 CREATE TABLE RecentlyPlayed (
     trackId TEXT NOT NULL PRIMARY KEY,
     playedAt INTEGER NOT NULL,
+    playCount INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (trackId) REFERENCES TrackEntity(id) ON DELETE CASCADE
 );
 
@@ -113,13 +114,26 @@ SELECT COUNT(*) FROM PlaylistTrackCrossRef WHERE playlistId = ?;
 
 -- Recently played
 insertRecentlyPlayed:
-INSERT OR REPLACE INTO RecentlyPlayed(trackId, playedAt) VALUES (?, ?);
+INSERT INTO RecentlyPlayed(trackId, playedAt, playCount) 
+VALUES (?, ?, ?);
+
+getRecentlyPlayedById:
+SELECT * FROM RecentlyPlayed WHERE trackId = ?;
+
+updateRecentlyPlayed:
+UPDATE RecentlyPlayed SET playedAt = ?, playCount = ? WHERE trackId = ?;
 
 getRecentlyPlayed:
 SELECT t.* FROM TrackEntity t
 INNER JOIN RecentlyPlayed rp ON t.id = rp.trackId
 ORDER BY rp.playedAt DESC
-LIMIT 20;
+LIMIT :limit;
+
+getTopPlayedTracks:
+SELECT t.* FROM TrackEntity t
+INNER JOIN RecentlyPlayed rp ON t.id = rp.trackId
+ORDER BY rp.playCount DESC, rp.playedAt DESC
+LIMIT :limit;
 
 -- Cached stream URLs
 getCachedStreamUrl:
@@ -130,3 +144,5 @@ INSERT OR REPLACE INTO CachedStreamUrl(videoId, streamUrl, expiresAt) VALUES (?,
 
 clearExpiredStreamUrls:
 DELETE FROM CachedStreamUrl WHERE expiresAt <= ?;
+
+

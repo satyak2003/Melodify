@@ -1,4 +1,4 @@
-package com.melodify.android.ui.screens
+﻿package com.melodify.android.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -237,7 +237,7 @@ fun NowPlayingContent(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Card(
                             modifier = Modifier.size(280.dp),
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(12.dp),
                             elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
                             colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
                         ) {

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.melodify.shared.ui.modifiers.shimmerEffect
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -144,7 +146,22 @@ fun SearchScreen(navController: NavController, playerViewModel: PlayerViewModel)
         
         when (val state = searchState) {
             is SearchUiState.Empty -> SearchEmptyState(onQuerySelect = viewModel::updateQuery)
-            is SearchUiState.Loading -> CircularProgressIndicator(modifier = Modifier.fillMaxWidth().padding(32.dp).wrapContentWidth())
+            is SearchUiState.Loading -> {
+                LazyColumn {
+                    item { SectionHeader("Songs") }
+                    items(5) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).shimmerEffect())
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Box(modifier = Modifier.fillMaxWidth(0.6f).height(16.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                                Spacer(Modifier.height(8.dp))
+                                Box(modifier = Modifier.fillMaxWidth(0.4f).height(12.dp).clip(RoundedCornerShape(4.dp)).shimmerEffect())
+                            }
+                        }
+                    }
+                }
+            }
 
             is SearchUiState.Success -> {
                 LazyColumn {
@@ -163,7 +180,7 @@ fun SearchScreen(navController: NavController, playerViewModel: PlayerViewModel)
                     }
                 }
             }
-            is SearchUiState.Error -> ErrorMessage(state.message)
+            is SearchUiState.Error -> Text(state.message)
         }
     }
 }

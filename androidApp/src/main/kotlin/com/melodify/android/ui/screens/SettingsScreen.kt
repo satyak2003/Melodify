@@ -1,4 +1,4 @@
-package com.melodify.android.ui.screens
+﻿package com.melodify.android.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -190,7 +190,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://melodify-backend-2469.onrender.com/login"))
                         navController.context.startActivity(intent)
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -244,7 +244,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
                 val googleUserName by AuthManager.userName.collectAsState()
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -290,7 +290,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -412,7 +412,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -495,7 +495,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
                 // Autoplay Recommendations Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
                     Row(
@@ -529,7 +529,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
                 // Equalizer Card
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { navController.navigate("equalizer") },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
                     Row(
@@ -558,7 +558,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
                 // Sync Listening & Discord Party Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -615,7 +615,7 @@ fun SettingsScreen(onBack: () -> Unit, navController: NavController) {
                 // About & Information Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {

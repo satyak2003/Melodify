@@ -103,7 +103,7 @@ fun DesktopDownloadItemRow(item: DownloadItem) {
             }
         },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(8.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),

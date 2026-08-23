@@ -68,6 +68,7 @@ class PlaybackManager(
         scope.launch {
             try {
                 onBuffering(track)
+                musicRepository.addRecentlyPlayed(track)
                 _currentTrack.value = track
 
                 // Check for local downloaded copy first

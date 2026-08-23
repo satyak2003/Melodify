@@ -5,6 +5,8 @@ import com.melodify.shared.api.innertube.InnerTubeParser
 import com.melodify.shared.api.lyrics.LyricsApi
 import com.melodify.shared.api.spotify.SpotifyApi
 import com.melodify.shared.api.deezer.DeezerApi
+import com.melodify.shared.api.lastfm.LastFmApi
+import com.melodify.shared.api.radio.FmRadioApi
 import com.melodify.shared.data.MusicRepository
 import com.melodify.shared.domain.discord.DiscordRpc
 import com.melodify.shared.domain.player.AudioPlayer
@@ -48,9 +50,11 @@ val appModule = module {
     single { SpotifyApi(get()) }
     single { LyricsApi(get()) }
     single { DeezerApi(get()) }
+    single { LastFmApi(get()) }
+    single { FmRadioApi(get()) }
     
     // Repository
-    single { MusicRepository(get(), InnerTubeParser, get()) }
+    single { MusicRepository(get(), InnerTubeParser, get(), get(), get()) }
     
     // ViewModels
     viewModel { PlayerViewModel(get(), get(), get(), get()) }
@@ -58,3 +62,4 @@ val appModule = module {
     viewModel { HomeViewModel(get()) }
     viewModel { LibraryViewModel(get(), get()) }
 }
+

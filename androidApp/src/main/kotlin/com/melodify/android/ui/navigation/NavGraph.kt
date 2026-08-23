@@ -1,4 +1,4 @@
-package com.melodify.android.ui.navigation
+﻿package com.melodify.android.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
@@ -111,7 +111,7 @@ fun MelodifyApp() {
 
     val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     // 72dp nav bar pill + 16dp bottom gap + system nav bar inset
-    val bottomNavHeight = 72.dp + 16.dp + navBarBottomPadding
+    val bottomNavHeight = 72.dp + navBarBottomPadding
 
     PlayerBottomSheet(
         playerViewModel = playerViewModel, 
@@ -207,9 +207,8 @@ fun BottomNavBar(navController: NavController) {
     val navBarBottomPadding = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     androidx.compose.material3.Surface(
-        modifier = Modifier
-            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp + navBarBottomPadding),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        modifier = Modifier.padding(bottom = navBarBottomPadding),
+        shape = androidx.compose.ui.graphics.RectangleShape,
         color = androidx.compose.ui.graphics.Color(0xAA000000),
         border = androidx.compose.foundation.BorderStroke(0.5.dp, androidx.compose.ui.graphics.Color(0x44FFFFFF)),
         shadowElevation = 0.dp,
