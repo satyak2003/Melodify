@@ -27,8 +27,8 @@ actual object AuthManager {
     actual val userName = _userName.asStateFlow()
     
     // Desktop App Client ID
-    private const val CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE"
-    private const val CLIENT_SECRET = "YOUR_GOOGLE_CLIENT_SECRET_HERE"
+    private const val CLIENT_ID = Secrets.DESKTOP_CLIENT_ID
+    private const val CLIENT_SECRET = Secrets.DESKTOP_CLIENT_SECRET
     private const val REDIRECT_URI = "http://127.0.0.1:8080/callback"
 
     actual suspend fun loginWithGoogle(): GoogleTokens? = withContext(Dispatchers.IO) {
@@ -104,3 +104,6 @@ actual object AuthManager {
         _isGoogleLoggedIn.value = false
     }
 }
+
+
+

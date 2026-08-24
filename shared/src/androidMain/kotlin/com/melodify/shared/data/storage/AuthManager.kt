@@ -109,6 +109,8 @@ actual object AuthManager {
             }
             cont.resume(null)
         } catch (e: Exception) {
+            System.err.println("Google SignIn Android Error:")
+            e.printStackTrace()
             cont.resume(null)
         }
     }

@@ -41,3 +41,5 @@ shared/src/*/kotlin/com/melodify/db/
 *.deb
 *.msi
 *.dmg
+
+shared/src/desktopMain/kotlin/com/melodify/shared/data/storage/Secrets.kt

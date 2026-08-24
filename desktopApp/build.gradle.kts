@@ -78,3 +78,16 @@ tasks.withType<AbstractJPackageTask>().configureEach {
         freeArgs.add(project.file("installer-resources").absolutePath)
     }
 }
+
+tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
+    doFirst {
+        val resDir = project.file("build/compose/tmp/resources")
+        if (!resDir.exists()) resDir.mkdirs()
+        val custom = project.file("installer-resources")
+        if (custom.exists()) {
+            custom.listFiles()?.forEach { f ->
+                f.copyTo(project.file("build/compose/tmp/resources/${f.name}"), overwrite = true)
+            }
+        }
+    }
+}
